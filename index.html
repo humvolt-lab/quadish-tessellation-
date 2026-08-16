@@ -71,20 +71,22 @@ button{ font-family:inherit; }
 /* ================= INIT SCREEN ================= */
 #init{
   flex:1; display:flex; align-items:center; justify-content:center;
-  padding:20px;
+  padding:12px; overflow-y:auto; touch-action:pan-y;
+  -webkit-overflow-scrolling:touch;
 }
 .cartridge{
   width:100%; max-width:420px;
   background:linear-gradient(180deg,var(--bg-2),var(--bg-1));
   border:4px solid var(--line);
   border-radius:14px;
-  padding:26px 22px 22px;
+  padding:18px 18px 16px;
   box-shadow:
     inset 0 4px 0 rgba(255,255,255,0.10),
     inset 0 -8px 0 rgba(0,0,0,0.35),
     0 10px 0 var(--line),
     0 20px 30px rgba(0,0,0,0.55);
   position:relative;
+  margin:14px 0;
 }
 .cartridge::before{
   content:"";
@@ -94,30 +96,30 @@ button{ font-family:inherit; }
 }
 .brand{
   font-family:'Press Start 2P',monospace;
-  font-size:15px; letter-spacing:1px; color:var(--gold);
+  font-size:14px; letter-spacing:1px; color:var(--gold);
   text-shadow: 3px 3px 0 rgba(0,0,0,0.6), 0 0 18px rgba(255,212,71,0.35);
-  text-align:center; margin:6px 0 4px; line-height:1.6;
+  text-align:center; margin:2px 0 2px; line-height:1.4;
 }
 .brand-sub{
-  text-align:center; color:var(--ink-dim); font-size:11px;
-  letter-spacing:3px; text-transform:uppercase; margin-bottom:26px;
+  text-align:center; color:var(--ink-dim); font-size:10px;
+  letter-spacing:2px; text-transform:uppercase; margin-bottom:14px;
 }
 .field-label{
   font-size:10px; letter-spacing:2px; text-transform:uppercase;
-  color:var(--ink-dim); margin-bottom:10px; text-align:center;
+  color:var(--ink-dim); margin-bottom:6px; text-align:center;
 }
 .bpm-readout{
   font-family:'Press Start 2P',monospace;
-  font-size:46px; text-align:center; color:var(--ink);
+  font-size:32px; text-align:center; color:var(--ink);
   text-shadow:3px 3px 0 rgba(0,0,0,0.6);
-  margin-bottom:4px; letter-spacing:2px;
+  margin-bottom:2px; letter-spacing:2px;
 }
-.bpm-tag{ text-align:center; color:var(--ink-dim); font-size:10px; letter-spacing:3px; margin-bottom:16px;}
-.bpm-row{ display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+.bpm-tag{ text-align:center; color:var(--ink-dim); font-size:9px; letter-spacing:2px; margin-bottom:8px;}
+.bpm-row{ display:flex; align-items:center; gap:10px; margin-bottom:4px; }
 .bpm-btn{
-  width:52px; height:52px; flex:0 0 auto;
+  width:42px; height:42px; flex:0 0 auto;
   background:var(--bg-2); color:var(--ink);
-  font-size:22px; font-weight:800;
+  font-size:20px; font-weight:800;
   display:flex; align-items:center; justify-content:center;
 }
 .bpm-slider-wrap{ flex:1; }
@@ -132,19 +134,19 @@ input[type=range]::-webkit-slider-thumb{
   box-shadow:0 3px 0 var(--line);
 }
 #startBtn{
-  width:100%; padding:18px; margin-top:20px;
+  width:100%; padding:14px; margin-top:12px;
   background:linear-gradient(180deg,#ff6a7a,var(--danger));
-  color:#fff; font-family:'Press Start 2P',monospace; font-size:13px;
+  color:#fff; font-family:'Press Start 2P',monospace; font-size:12px;
   letter-spacing:2px;
 }
 .chip-row{
-  display:flex; gap:7px; overflow-x:auto; padding:2px 2px 6px;
+  display:flex; gap:6px; overflow-x:auto; padding:2px 2px 4px;
   touch-action:pan-x; -webkit-overflow-scrolling:touch;
   scrollbar-width:none;
 }
 .chip-row::-webkit-scrollbar{ display:none; }
 .chip{
-  flex:0 0 auto; padding:9px 12px;
+  flex:0 0 auto; padding:7px 10px;
   background:var(--bg-2); color:var(--ink-dim);
   font-size:10px; letter-spacing:1px; border-radius:5px;
   border:3px solid var(--line); white-space:nowrap;
@@ -350,13 +352,13 @@ input[type=range]::-webkit-slider-thumb{
         <button class="voxel bpm-btn" id="bpmUp">&plus;</button>
       </div>
 
-      <div class="field-label" style="margin-top:20px;">Scale</div>
+      <div class="field-label" style="margin-top:12px;">Scale</div>
       <div class="chip-row" id="scaleRow"></div>
 
-      <div class="field-label" style="margin-top:16px;">Key</div>
+      <div class="field-label" style="margin-top:8px;">Key</div>
       <div class="chip-row" id="keyRow"></div>
 
-      <button class="voxel" id="startBtn" style="margin-top:20px;">▶ TAP TO START AUDIO</button>
+      <button class="voxel" id="startBtn" style="margin-top:10px;">▶ TAP TO START AUDIO</button>
     </div>
   </div>
 
