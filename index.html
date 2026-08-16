@@ -1,0 +1,1647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>QUADISH TESSELLATION</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;600;800&display=swap');
+
+:root{
+  --bg-0:#120a1e;
+  --bg-1:#1c1130;
+  --bg-2:#271a40;
+  --ink:#f3ecff;
+  --ink-dim:#8f80b3;
+  --line:#0a0614;
+  --hi:#ffffff;
+  --gold:#ffd447;
+  --danger:#ff5468;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body{
+  margin:0; padding:0; width:100%; height:100%;
+  background:var(--bg-0); color:var(--ink);
+  overflow:hidden; overscroll-behavior:none;
+  touch-action:none;
+  font-family:'JetBrains Mono',monospace;
+}
+body{
+  background:
+    radial-gradient(ellipse at 30% -10%, #3a2456 0%, transparent 55%),
+    radial-gradient(ellipse at 90% 110%, #1c3b4a 0%, transparent 50%),
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.16) 0px, rgba(0,0,0,0.16) 1px, transparent 1px, transparent 4px),
+    var(--bg-0);
+}
+#app{
+  position:fixed; inset:0;
+  display:flex; flex-direction:column;
+  padding-top:calc(var(--safe-area-top) + 6px);
+  padding-bottom:calc(var(--safe-area-bottom) + 6px);
+}
+.hidden{ display:none !important; }
+button{ font-family:inherit; }
+
+.pxl{ image-rendering:pixelated; image-rendering:crisp-edges; }
+
+/* ---------- shared chunky voxel button look ---------- */
+.voxel{
+  border:3px solid var(--line);
+  border-radius:6px;
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.16),
+    inset 0 -5px 0 rgba(0,0,0,0.30),
+    0 5px 0 var(--line),
+    0 8px 12px rgba(0,0,0,0.45);
+  transform:translateY(0);
+  transition:transform .06s ease, box-shadow .06s ease;
+}
+.voxel:active{
+  transform:translateY(4px);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.12),
+    inset 0 -3px 0 rgba(0,0,0,0.30),
+    0 1px 0 var(--line),
+    0 2px 4px rgba(0,0,0,0.4);
+}
+
+/* ================= INIT SCREEN ================= */
+#init{
+  flex:1; display:flex; align-items:center; justify-content:center;
+  padding:20px;
+}
+.cartridge{
+  width:100%; max-width:420px;
+  background:linear-gradient(180deg,var(--bg-2),var(--bg-1));
+  border:4px solid var(--line);
+  border-radius:14px;
+  padding:26px 22px 22px;
+  box-shadow:
+    inset 0 4px 0 rgba(255,255,255,0.10),
+    inset 0 -8px 0 rgba(0,0,0,0.35),
+    0 10px 0 var(--line),
+    0 20px 30px rgba(0,0,0,0.55);
+  position:relative;
+}
+.cartridge::before{
+  content:"";
+  position:absolute; left:22px; right:22px; top:-8px; height:16px;
+  background:repeating-linear-gradient(90deg,#0a0614 0 6px, transparent 6px 12px);
+  border-radius:4px 4px 0 0;
+}
+.brand{
+  font-family:'Press Start 2P',monospace;
+  font-size:15px; letter-spacing:1px; color:var(--gold);
+  text-shadow: 3px 3px 0 rgba(0,0,0,0.6), 0 0 18px rgba(255,212,71,0.35);
+  text-align:center; margin:6px 0 4px; line-height:1.6;
+}
+.brand-sub{
+  text-align:center; color:var(--ink-dim); font-size:11px;
+  letter-spacing:3px; text-transform:uppercase; margin-bottom:26px;
+}
+.field-label{
+  font-size:10px; letter-spacing:2px; text-transform:uppercase;
+  color:var(--ink-dim); margin-bottom:10px; text-align:center;
+}
+.bpm-readout{
+  font-family:'Press Start 2P',monospace;
+  font-size:46px; text-align:center; color:var(--ink);
+  text-shadow:3px 3px 0 rgba(0,0,0,0.6);
+  margin-bottom:4px; letter-spacing:2px;
+}
+.bpm-tag{ text-align:center; color:var(--ink-dim); font-size:10px; letter-spacing:3px; margin-bottom:16px;}
+.bpm-row{ display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+.bpm-btn{
+  width:52px; height:52px; flex:0 0 auto;
+  background:var(--bg-2); color:var(--ink);
+  font-size:22px; font-weight:800;
+  display:flex; align-items:center; justify-content:center;
+}
+.bpm-slider-wrap{ flex:1; }
+input[type=range]{
+  -webkit-appearance:none; width:100%; height:14px;
+  background:var(--bg-0); border:3px solid var(--line); border-radius:8px;
+  outline:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none; width:26px; height:26px; border-radius:5px;
+  background:var(--gold); border:3px solid var(--line);
+  box-shadow:0 3px 0 var(--line);
+}
+#startBtn{
+  width:100%; padding:18px; margin-top:20px;
+  background:linear-gradient(180deg,#ff6a7a,var(--danger));
+  color:#fff; font-family:'Press Start 2P',monospace; font-size:13px;
+  letter-spacing:2px;
+}
+.chip-row{
+  display:flex; gap:7px; overflow-x:auto; padding:2px 2px 6px;
+  touch-action:pan-x; -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+.chip-row::-webkit-scrollbar{ display:none; }
+.chip{
+  flex:0 0 auto; padding:9px 12px;
+  background:var(--bg-2); color:var(--ink-dim);
+  font-size:10px; letter-spacing:1px; border-radius:5px;
+  border:3px solid var(--line); white-space:nowrap;
+}
+.chip.active{ color:var(--bg-0); background:var(--gold); }
+.chip.random-chip{ color:var(--ink); border-color:var(--gold); }
+.chip.random-chip.active{ background:var(--gold); color:var(--bg-0); }
+
+/* ================= MAIN SCREEN ================= */
+#main{ flex:1; display:flex; flex-direction:column; min-height:0; padding:0 10px; }
+
+.topbar{
+  display:flex; align-items:center; justify-content:center;
+  padding:6px 4px 8px;
+  flex:0 0 auto;
+}
+.topbar-controls{ display:flex; align-items:center; gap:8px; }
+.mini-btn{
+  width:40px; height:40px; background:var(--bg-2); color:var(--ink);
+  display:flex; align-items:center; justify-content:center; font-size:16px;
+}
+#playBtn{ background:linear-gradient(180deg,#3fe0a0,#20c07a); color:#062; }
+#playBtn.playing{ background:linear-gradient(180deg,#ff6a7a,var(--danger)); color:#fff; }
+.fx-btn{
+  width:auto; padding:0 12px;
+  font-family:'Press Start 2P',monospace; font-size:10px; letter-spacing:1px;
+}
+.fx-btn.active{
+  background:linear-gradient(180deg,#ff6ec7,#c23fae); color:#fff;
+}
+.pat-btn{
+  width:auto; padding:0 12px;
+  font-family:'Press Start 2P',monospace; font-size:10px; letter-spacing:1px;
+}
+.pat-btn.active{
+  background:linear-gradient(180deg,#ffd447,#c99400); color:#1a1025;
+}
+.bank-badge{
+  font-size:8px; letter-spacing:1px; padding:3px 6px; border-radius:3px;
+  background:var(--bg-0); color:var(--ink-dim); border:2px solid var(--line);
+}
+.cell-disabled{ opacity:0.22; pointer-events:none; }
+.cell.is-queued{ animation:queueBlink 0.4s steps(2) infinite; }
+@keyframes queueBlink{ 50%{ filter:brightness(1.7); } }
+#xyPad.pad-disabled{ opacity:0.25; pointer-events:none; }
+.bpm-chip{
+  display:flex; align-items:center; gap:6px;
+  background:var(--bg-2); border:3px solid var(--line); border-radius:6px;
+  padding:0 4px; height:40px;
+}
+.bpm-chip button{ width:26px; height:26px; background:transparent; color:var(--ink-dim); border:none; font-size:16px; }
+.bpm-chip .val{ font-size:12px; font-weight:800; min-width:40px; text-align:center; }
+
+.grid-wrap{
+  flex:0 0 auto;
+  padding:4px 2px 8px;
+}
+.grid{
+  display:grid; grid-template-columns:repeat(4,1fr); gap:7px;
+}
+.cell{
+  position:relative;
+  aspect-ratio:1/1;
+  background:var(--cell-bg, var(--bg-2));
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  overflow:hidden;
+  --accent:#8f80b3;
+}
+.cell .glyph{
+  width:52%; height:52%;
+  filter:drop-shadow(0 2px 0 rgba(0,0,0,0.5));
+}
+.cell .idx{
+  position:absolute; top:3px; left:5px;
+  font-size:8px; color:rgba(255,255,255,0.35); letter-spacing:1px;
+}
+.cell .fam{
+  position:absolute; bottom:4px; font-size:6.5px; letter-spacing:0.5px;
+  color:rgba(255,255,255,0.55); text-transform:uppercase; text-align:center; width:100%;
+  padding:0 2px;
+}
+.grid{ --armed-accent:#ffd447; }
+.cell.is-on{
+  --cell-bg: color-mix(in srgb, var(--armed-accent) 38%, #1c1130);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.22),
+    inset 0 -5px 0 rgba(0,0,0,0.35),
+    0 5px 0 var(--line),
+    0 0 0 3px var(--armed-accent),
+    0 0 18px 2px color-mix(in srgb, var(--armed-accent) 65%, transparent);
+}
+.cell.is-armed{
+  border-color:var(--hi);
+  animation:armPulse 1.1s ease-in-out infinite;
+}
+@keyframes armPulse{
+  0%,100%{ box-shadow:inset 0 3px 0 rgba(255,255,255,0.16), inset 0 -5px 0 rgba(0,0,0,0.30), 0 5px 0 var(--line), 0 0 0 3px var(--accent); }
+  50%{ box-shadow:inset 0 3px 0 rgba(255,255,255,0.16), inset 0 -5px 0 rgba(0,0,0,0.30), 0 5px 0 var(--line), 0 0 0 5px var(--accent), 0 0 22px 4px color-mix(in srgb, var(--accent) 70%, transparent); }
+}
+.cell .flash{
+  position:absolute; inset:0; background:#fff; opacity:0;
+  pointer-events:none;
+}
+.cell.is-playhead .flash{ opacity:0.55; transition:opacity .03s linear; }
+.cell:not(.is-playhead) .flash{ transition:opacity .28s ease-out; }
+.cell .rec-dot{
+  position:absolute; top:4px; right:5px; width:6px; height:6px; border-radius:50%;
+  background:var(--danger); box-shadow:0 0 6px var(--danger);
+  opacity:0;
+}
+.cell.has-motion .rec-dot{ opacity:1; }
+
+.armed-strip{
+  flex:0 0 auto;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:8px 8px; margin:0 2px 8px;
+  background:var(--bg-1); border:3px solid var(--line); border-radius:6px;
+}
+.armed-name{ font-size:11px; letter-spacing:1px; display:flex; align-items:center; gap:8px;}
+.armed-swatch{ width:14px; height:14px; border-radius:3px; border:2px solid var(--line); }
+.armed-vals{ font-size:10px; color:var(--ink-dim); letter-spacing:0.5px; display:flex; align-items:center; gap:10px;}
+.armed-vals b{ color:var(--ink); }
+.strip-btn{
+  width:28px; height:28px; font-size:12px;
+}
+
+.pad-wrap{
+  flex:1; min-height:0;
+  padding:2px 2px 2px;
+  display:flex;
+}
+#xyPad{
+  position:relative; flex:1;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.05), transparent 30%),
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 25%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 25%),
+    var(--bg-1);
+  border:3px solid var(--line);
+  border-radius:10px;
+  box-shadow:
+    inset 0 6px 0 rgba(255,255,255,0.06),
+    inset 0 -8px 14px rgba(0,0,0,0.45),
+    0 6px 0 var(--line);
+  overflow:hidden;
+}
+.axis-label{
+  position:absolute; font-size:9px; letter-spacing:2px; color:var(--ink-dim); text-transform:uppercase;
+  pointer-events:none;
+}
+.axis-label.x-lo{ left:10px; bottom:8px; }
+.axis-label.x-hi{ right:10px; bottom:8px; }
+.axis-label.y-lo{ left:10px; bottom:8px; }
+.axis-label.y-hi{ left:10px; top:8px; }
+#padThumb{
+  position:absolute; width:34px; height:34px; margin:-17px;
+  border-radius:8px;
+  background:var(--accent-color,#ffd447);
+  border:3px solid var(--line);
+  box-shadow:0 4px 0 rgba(0,0,0,0.5), 0 0 20px 2px color-mix(in srgb, var(--accent-color,#ffd447) 70%, transparent);
+  pointer-events:none;
+  transition:background-color .15s ease;
+}
+#padThumb::after{
+  content:""; position:absolute; inset:6px; border:2px solid rgba(0,0,0,0.35); border-radius:3px;
+}
+#padCross{
+  position:absolute; width:1px; height:1px; pointer-events:none;
+}
+.rec-flag{
+  position:absolute; top:10px; right:12px;
+  display:flex; align-items:center; gap:6px;
+  font-size:9px; letter-spacing:1px; color:var(--danger);
+  opacity:0; transition:opacity .15s ease;
+}
+.rec-flag.show{ opacity:1; }
+.rec-flag .dot{ width:8px; height:8px; border-radius:50%; background:var(--danger); animation:blink 0.8s steps(2) infinite; }
+@keyframes blink{ 50%{ opacity:0.15; } }
+
+.help-row{
+  flex:0 0 auto; text-align:center; padding:6px 4px 2px;
+  color:var(--ink-dim); font-size:9px; letter-spacing:0.5px; line-height:1.5;
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ INIT / AUDIO UNLOCK SCREEN ============ -->
+  <div id="init">
+    <div class="cartridge">
+      <div class="brand">QUADISH<br>TESSELLATION</div>
+      <div class="brand-sub">16 &middot; STEP &middot; PIXEL &middot; GROOVE</div>
+
+      <div class="field-label">Tempo</div>
+      <div class="bpm-readout" id="bpmReadout">120</div>
+      <div class="bpm-tag">BEATS PER MINUTE</div>
+      <div class="bpm-row">
+        <button class="voxel bpm-btn" id="bpmDown">&minus;</button>
+        <div class="bpm-slider-wrap">
+          <input type="range" id="bpmSlider" min="40" max="220" step="1" value="120">
+        </div>
+        <button class="voxel bpm-btn" id="bpmUp">&plus;</button>
+      </div>
+
+      <div class="field-label" style="margin-top:20px;">Scale</div>
+      <div class="chip-row" id="scaleRow"></div>
+
+      <div class="field-label" style="margin-top:16px;">Key</div>
+      <div class="chip-row" id="keyRow"></div>
+
+      <button class="voxel" id="startBtn" style="margin-top:20px;">▶ TAP TO START AUDIO</button>
+    </div>
+  </div>
+
+  <!-- ============ MAIN SEQUENCER SCREEN ============ -->
+  <div id="main" class="hidden">
+    <div class="topbar">
+      <div class="topbar-controls">
+        <div class="bpm-chip">
+          <button id="mainBpmDown">&minus;</button>
+          <div class="val" id="mainBpmVal">120</div>
+          <button id="mainBpmUp">&plus;</button>
+        </div>
+        <button class="voxel mini-btn fx-btn" id="fxBtn" title="Switch grid to FX">FX</button>
+        <button class="voxel mini-btn pat-btn" id="patBtn" title="Switch grid to Patterns">PAT</button>
+        <button class="voxel mini-btn" id="playBtn">▶</button>
+      </div>
+    </div>
+
+    <div class="grid-wrap">
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <div class="armed-strip">
+      <div class="armed-name"><span class="bank-badge" id="bankBadge">DRUM</span><span class="armed-swatch" id="armedSwatch"></span><span id="armedName">—</span></div>
+      <div class="armed-vals"><span><span id="labelTone">TONE</span> <b id="valTone">50</b></span><span><span id="labelDecay">DECAY</span> <b id="valDecay">50</b></span><button class="voxel mini-btn strip-btn" id="clearBtn" title="Clear armed pattern">✕</button></div>
+    </div>
+
+    <div class="pad-wrap">
+      <div id="xyPad">
+        <div class="axis-label y-hi">LONG</div>
+        <div class="axis-label y-lo">TONE →</div>
+        <div class="axis-label x-hi">BRIGHT</div>
+        <div class="rec-flag" id="recFlag"><span class="dot"></span>REC MOTION</div>
+        <div id="padThumb"></div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* =====================================================================
+   PIXEL GLYPHS (8x8 bitmaps) — one per sound, drawn to tiny canvases
+   ===================================================================== */
+const G = {
+  KICK_A:["........",".#####..","#######.","########","########",".######.","..####..","........"],
+  KICK_B:["........",".#####..","#######.","###..###","###..###",".######.","..####..","........"],
+  SNARE_A:["########","#......#","#.#..#.#","#..##..#","#..##..#","#.#..#.#","#......#","########"],
+  SNARE_B:["#.#.#.#.",".#.#.#.#","#.#.#.#.",".#.#.#.#","#.#.#.#.",".#.#.#.#","#.#.#.#.",".#.#.#.#"],
+  HATC_A:["........","########","########","........","........","########","########","........"],
+  HATC_B:["........","...##...","########","########","........","..####..","........","........"],
+  HATO_A:["#......#","........","########","........","........","########","........","#......#"],
+  HATO_B:[".#....#.","#......#","########","........","........","########","#......#",".#....#."],
+  TOML_A:["........",".######.","##....##","##....##","##....##","##....##",".######.","........"],
+  TOML_B:["........",".######.","########","########","########","########",".######.","........"],
+  TOMH_A:["..####..",".#....#.","#......#","#......#",".#....#.","..####..","........","........"],
+  TOMH_B:["..####..",".######.","########","########",".######.","..####..","........","........"],
+  WAVE:["........","##.....#","..#...#.","...#.#..","....#...","...#.#..","..#...#.",".#.....#"],
+  NOISE:["#..#....","...#..#.","..#...#.","#....#..","..#..#..",".#.....#","...#..#.","#..#...."],
+  RIDE:["...##...","..#..#..",".#.##.#.","#..##..#","#..##..#",".#.##.#.","..#..#..","...##..."],
+  CRASH:["#..#..#.",".#.##.#.","..####..","##....##","..####..",".#.##.#.","#..#..#.","........"]
+};
+
+/* FX glyphs — one per effect */
+const FXG = {
+  FILT_DN:["#.......","##......",".##.....","..##....","...##...","....##..",".....##.","......##"],
+  FILT_UP:["......##",".....##.","....##..","...##...","..##....",".##.....","##......","#......."],
+  BITCRUSH:["#.......","##......","###.....","####....","#####...","######..","#######.","########"],
+  DISTORT:["........",".#.....#","##.#.#.#","########","##.#.#.#",".#.....#","........","........"],
+  DELAY:["##......","........",".##.....","........","..##....","........","...#....","........"],
+  REVERB:["...##...","..#..#..",".#....#.","#......#",".#....#.","..#..#..","...##...","........"],
+  GATE:["##.##.##","##.##.##","........","##.##.##","##.##.##","........","##.##.##","##.##.##"],
+  TREMOLO:["........","##....##","..#..#..","...##...","...##...","..#..#..","##....##","........"],
+  AUTOPAN:["..#...#.",".##.##..","##...##.","........","........","##...##.",".##.##..","..#...#."],
+  RINGMOD:["..##....",".#..#...","#....#.#",".#..#.#.","..##.#..","......#.","........","........"],
+  RISER:["......##",".....##.","....##..","...##...","..##....",".##.....","##......","........"],
+  IMPACT:["#..##..#",".#.##.#.","..####..","########","..####..",".#.##.#.","#..##..#","........"],
+  CRACKLE:["#.#..#.#","..#.#...",".#...#.#","#.#.#...","..#...#.",".#.#.#.#","#...#..#",".#.#..#."],
+  NOISEWASH:["........","########","........","########","........","########","........","........"],
+  STUTTER:["#.#.#.#.","........","#.#.#.#.","........","#.#.#.#.","........","#.#.#.#.","........"],
+  GLITCH:["##..##..","..##..##","##..##..","..##..##","##..##..","..##..##","##..##..","..##..##"]
+};
+
+/* Pattern-slot glyph — a tiny step-grid icon used for all 8 slot cells */
+const PATG = ["........",".##.##..",".##.##..","........",".##.##..",".##.##..","........","........"];
+const PATG_EMPTY = ["........",".##.##..","........","........","........","........",".##.##..","........"];
+
+function drawGlyph(canvas, bitmap, color){
+  const ctx = canvas.getContext("2d");
+  canvas.width = 8; canvas.height = 8;
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0,0,8,8);
+  ctx.fillStyle = color;
+  for(let y=0;y<8;y++){
+    for(let x=0;x<8;x++){
+      if(bitmap[y][x] === "#") ctx.fillRect(x,y,1,1);
+    }
+  }
+}
+
+/* =====================================================================
+   AUDIO ENGINE
+   ===================================================================== */
+let ctx = null;
+let masterDry, masterWet, compressor, convolver;
+let fxFilter, fxShaper, fxPanner, fxGate, fxDelay, fxDelayFeedback, fxDelayWet;
+let identityCurve;
+
+function noiseBuffer(){
+  if(ctx._noiseBuf) return ctx._noiseBuf;
+  const len = ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i] = Math.random()*2-1;
+  ctx._noiseBuf = buf;
+  return buf;
+}
+
+function buildImpulse(duration, decay){
+  const rate = ctx.sampleRate;
+  const len = Math.floor(rate*duration);
+  const imp = ctx.createBuffer(2, len, rate);
+  for(let ch=0; ch<2; ch++){
+    const d = imp.getChannelData(ch);
+    for(let i=0;i<len;i++){
+      d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, decay);
+    }
+  }
+  return imp;
+}
+
+/* =====================================================================
+   SCALE / KEY SYSTEM
+   Every melodic, XY-driven pitch in the kit (kick, snare, toms, wave
+   generator, riser, impact) is snapped to the nearest note in the
+   chosen scale + key, so gestures always land in tune. Every other
+   fixed timbral frequency constant across the kit (metallic hat/ride/
+   crash partials, sub-thump floors) is transposed by the same key so
+   the whole instrument shares one musical center. Scale + key are
+   picked on the init screen, or randomized per session if left unset.
+   ===================================================================== */
+const SCALES = {
+  "Hijaz":            [0,1,4,5,7,8,10],
+  "Persian":          [0,1,4,5,6,8,11],
+  "Major Pentatonic": [0,2,4,7,9],
+  "Minor Pentatonic": [0,3,5,7,10],
+  "Octatonic":        [0,2,3,5,6,8,9,11],
+  "Hirajoshi":        [0,2,3,7,8],
+  "Egyptian":         [0,2,5,7,10],
+  "Whole Tone":       [0,2,4,6,8,10],
+  "Blues":            [0,3,5,6,7,10],
+  "Romanian Minor":   [0,2,3,6,7,9,10]
+};
+const SCALE_NAMES = Object.keys(SCALES);
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+let currentKey = 0;                 // 0=C .. 11=B, resolved at Start
+let currentScaleName = "Hijaz";
+let keyTranspose = 1;                // multiplier applied to fixed freq constants
+let currentScaleSet = new Set([0,1,2,3,4,5,6,7,8,9,10,11]); // safe default
+
+function resolveScaleAndKey(scaleName, keyIndex){
+  currentScaleName = scaleName;
+  currentKey = keyIndex;
+  keyTranspose = Math.pow(2, currentKey/12);
+  currentScaleSet = new Set(SCALES[scaleName].map(d => (d+currentKey) % 12));
+}
+
+// kt(): transpose a fixed (non-melodic) frequency constant into the current key
+function kt(hz){ return hz * keyTranspose; }
+
+function midiToFreq(m){ return 440 * Math.pow(2, (m-69)/12); }
+function freqToMidi(f){ return 69 + 12*Math.log2(f/440); }
+function isInScale(m){ return currentScaleSet.has(((m%12)+12)%12); }
+
+// quantizeToScale(): snap an XY-computed melodic frequency to the
+// nearest note that belongs to the current scale + key
+function quantizeToScale(freq){
+  if(!currentScaleSet || currentScaleSet.size === 0) return freq;
+  const base = Math.round(freqToMidi(freq));
+  if(isInScale(base)) return midiToFreq(base);
+  for(let d=1; d<24; d++){
+    if(isInScale(base-d)) return midiToFreq(base-d);
+    if(isInScale(base+d)) return midiToFreq(base+d);
+  }
+  return freq;
+}
+
+function initAudio(){
+  if(ctx) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  ctx = new AC();
+
+  compressor = ctx.createDynamicsCompressor();
+  compressor.threshold.value = -14;
+  compressor.knee.value = 18;
+  compressor.ratio.value = 3.2;
+  compressor.attack.value = 0.003;
+  compressor.release.value = 0.22;
+  compressor.connect(ctx.destination);
+
+  masterDry = ctx.createGain();
+  masterDry.gain.value = 0.9;
+
+  // ---- persistent FX insert chain (all drum + fx voices pass through this) ----
+  // dry -> filter -> waveshaper -> panner -> gate -> compressor
+  fxFilter = ctx.createBiquadFilter();
+  fxFilter.type = "lowpass";
+  fxFilter.frequency.value = 20000;
+  fxFilter.Q.value = 0.6;
+
+  identityCurve = new Float32Array(1024);
+  for(let i=0;i<1024;i++) identityCurve[i] = (i/1023)*2-1;
+  fxShaper = ctx.createWaveShaper();
+  fxShaper.curve = identityCurve;
+  fxShaper.oversample = "none";
+
+  fxPanner = ctx.createStereoPanner();
+  fxPanner.pan.value = 0;
+
+  fxGate = ctx.createGain();
+  fxGate.gain.value = 1;
+
+  masterDry.connect(fxFilter);
+  fxFilter.connect(fxShaper);
+  fxShaper.connect(fxPanner);
+  fxPanner.connect(fxGate);
+  fxGate.connect(compressor);
+
+  // parallel delay send, tapped post-shaper so crush/drive color the repeats too
+  fxDelay = ctx.createDelay(1.0);
+  fxDelay.delayTime.value = 0.28;
+  fxDelayFeedback = ctx.createGain();
+  fxDelayFeedback.gain.value = 0.35;
+  fxDelayWet = ctx.createGain();
+  fxDelayWet.gain.value = 0;
+  fxShaper.connect(fxDelay);
+  fxDelay.connect(fxDelayFeedback);
+  fxDelayFeedback.connect(fxDelay);
+  fxDelay.connect(fxDelayWet);
+  fxDelayWet.connect(compressor);
+
+  convolver = ctx.createConvolver();
+  convolver.buffer = buildImpulse(1.7, 3.0);
+  masterWet = ctx.createGain();
+  masterWet.gain.value = 0;
+  masterWet.connect(convolver);
+  convolver.connect(compressor);
+
+  // unlock: play a silent blip
+  const b = ctx.createBuffer(1,1,22050);
+  const s = ctx.createBufferSource();
+  s.buffer = b; s.connect(ctx.destination); s.start(0);
+}
+
+/* ---- per-family synth voices. xy = {x,y} in 0..1 ---- */
+function playKick(out,time,xy,cfg){
+  const dur = 0.14 + xy.y*0.5;
+  const f0 = quantizeToScale(cfg.f0 + xy.x*60);
+  const f1 = kt(cfg.f1);
+  const osc = ctx.createOscillator(); osc.type = cfg.oscType || "sine";
+  const g = ctx.createGain();
+  osc.frequency.setValueAtTime(f0,time);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(f1,25), time+dur*0.85);
+  g.gain.setValueAtTime(0.0001,time);
+  g.gain.exponentialRampToValueAtTime(1.0,time+0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  osc.connect(g); g.connect(out);
+  osc.start(time); osc.stop(time+dur+0.05);
+  if(cfg.click){
+    const src = ctx.createBufferSource(); src.buffer = noiseBuffer();
+    const hp = ctx.createBiquadFilter(); hp.type="highpass"; hp.frequency.value = 1500+xy.x*3500;
+    const cg = ctx.createGain();
+    cg.gain.setValueAtTime(cfg.click,time);
+    cg.gain.exponentialRampToValueAtTime(0.0001,time+0.02);
+    src.connect(hp); hp.connect(cg); cg.connect(out);
+    src.start(time); src.stop(time+0.04);
+  }
+}
+
+function playSnare(out,time,xy,cfg){
+  const dur = 0.08 + xy.y*0.3;
+  const osc = ctx.createOscillator(); osc.type="triangle"; osc.frequency.value = quantizeToScale(cfg.tone + xy.x*80);
+  const og = ctx.createGain();
+  og.gain.setValueAtTime(cfg.toneLevel,time);
+  og.gain.exponentialRampToValueAtTime(0.0001,time+dur*0.5);
+  osc.connect(og); og.connect(out); osc.start(time); osc.stop(time+dur);
+
+  const src = ctx.createBufferSource(); src.buffer = noiseBuffer();
+  const bp = ctx.createBiquadFilter(); bp.type="bandpass"; bp.frequency.value = 1200+xy.x*3200; bp.Q.value = 0.8;
+  const ng = ctx.createGain();
+  ng.gain.setValueAtTime(cfg.noiseLevel,time);
+  ng.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  src.connect(bp); bp.connect(ng); ng.connect(out);
+  src.start(time); src.stop(time+dur+0.03);
+}
+
+function playHat(out,time,xy,cfg){
+  const dur = cfg.baseDur + xy.y*cfg.durRange;
+  const src = ctx.createBufferSource(); src.buffer = noiseBuffer();
+  const hp = ctx.createBiquadFilter(); hp.type="highpass"; hp.frequency.value = cfg.cutBase + xy.x*cfg.cutRange;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(cfg.level,time);
+  g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  src.connect(hp); hp.connect(g); g.connect(out);
+  src.start(time); src.stop(time+dur+0.03);
+  cfg.freqs.forEach(f=>{
+    const o = ctx.createOscillator(); o.type="square"; o.frequency.value = kt(f)*(0.85+xy.x*0.3);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(cfg.metal,time);
+    og.gain.exponentialRampToValueAtTime(0.0001,time+dur*0.6);
+    o.connect(og); og.connect(g);
+    o.start(time); o.stop(time+dur);
+  });
+}
+
+function playTom(out,time,xy,cfg){
+  const dur = 0.18 + xy.y*0.55;
+  const f0 = quantizeToScale(cfg.f0 + xy.x*cfg.fxRange);
+  const osc = ctx.createOscillator(); osc.type="sine";
+  const g = ctx.createGain();
+  osc.frequency.setValueAtTime(f0,time);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(f0*0.55,30), time+dur*0.8);
+  g.gain.setValueAtTime(0.0001,time);
+  g.gain.exponentialRampToValueAtTime(0.9,time+0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  osc.connect(g); g.connect(out);
+  osc.start(time); osc.stop(time+dur+0.05);
+}
+
+function playWaveGen(out,time,xy){
+  const dur = 0.15 + xy.y*0.7;
+  const freq = quantizeToScale(110 + xy.x*680);
+  const osc = ctx.createOscillator(); osc.type="sawtooth"; osc.frequency.value = freq;
+  const filt = ctx.createBiquadFilter(); filt.type="lowpass"; filt.frequency.value = 700+xy.x*4200;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001,time);
+  g.gain.exponentialRampToValueAtTime(0.5,time+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  osc.connect(filt); filt.connect(g); g.connect(out);
+  osc.start(time); osc.stop(time+dur+0.03);
+}
+
+function playNoiseGen(out,time,xy){
+  const dur = 0.1 + xy.y*0.6;
+  const src = ctx.createBufferSource(); src.buffer = noiseBuffer();
+  const filt = ctx.createBiquadFilter(); filt.type="bandpass"; filt.frequency.value = 300+xy.x*5200; filt.Q.value = 1.1;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001,time);
+  g.gain.exponentialRampToValueAtTime(0.6,time+0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  src.connect(filt); filt.connect(g); g.connect(out);
+  src.start(time); src.stop(time+dur+0.03);
+}
+
+function playRide(out,time,xy){
+  const dur = 0.4 + xy.y*1.6;
+  const src = ctx.createBufferSource(); src.buffer = noiseBuffer();
+  const hp = ctx.createBiquadFilter(); hp.type="highpass"; hp.frequency.value = 4000+xy.x*4000;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001,time);
+  g.gain.exponentialRampToValueAtTime(0.32,time+0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  src.connect(hp); hp.connect(g); g.connect(out);
+  src.start(time); src.stop(time+dur+0.06);
+  [3000,4200,5800].forEach(f=>{
+    const o = ctx.createOscillator(); o.type="triangle"; o.frequency.value = kt(f)*(0.9+xy.x*0.4);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.1,time);
+    og.gain.exponentialRampToValueAtTime(0.0001,time+dur*0.9);
+    o.connect(og); og.connect(g);
+    o.start(time); o.stop(time+dur);
+  });
+}
+
+function playCrash(out,time,xy){
+  const dur = 0.6 + xy.y*2.0;
+  const src = ctx.createBufferSource(); src.buffer = noiseBuffer();
+  const hp = ctx.createBiquadFilter(); hp.type="highpass"; hp.frequency.value = 2400+xy.x*3200;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001,time);
+  g.gain.exponentialRampToValueAtTime(0.45,time+0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  src.connect(hp); hp.connect(g); g.connect(out);
+  src.start(time); src.stop(time+dur+0.06);
+  const o = ctx.createOscillator(); o.type="square"; o.frequency.value = kt(2200)*(0.85+xy.x*0.4);
+  const og = ctx.createGain();
+  og.gain.setValueAtTime(0.06,time);
+  og.gain.exponentialRampToValueAtTime(0.0001,time+dur*0.7);
+  o.connect(og); og.connect(g); o.start(time); o.stop(time+dur);
+}
+
+/* =====================================================================
+   SOUND DEFINITIONS — 16 cells = 16 steps = 16 sounds, fixed 1:1
+   ===================================================================== */
+const SOUNDS = [
+  { name:"Kick I",      family:"kick",  color:"#ff5468", glyph:G.KICK_A,  fn:playKick,  cfg:{f0:130,f1:45,click:0.35} },
+  { name:"Kick II",     family:"kick",  color:"#ff5468", glyph:G.KICK_B,  fn:playKick,  cfg:{f0:170,f1:55,click:0.55,oscType:"triangle"} },
+  { name:"Snare I",     family:"snare", color:"#ffb627", glyph:G.SNARE_A, fn:playSnare, cfg:{tone:180,toneLevel:0.5,noiseLevel:0.8} },
+  { name:"Snare II",    family:"snare", color:"#ffb627", glyph:G.SNARE_B, fn:playSnare, cfg:{tone:220,toneLevel:0.22,noiseLevel:1.0} },
+  { name:"Hat Cl. I",   family:"hat",   color:"#2ee6a6", glyph:G.HATC_A,  fn:playHat,   cfg:{baseDur:0.03,durRange:0.05,cutBase:6000,cutRange:3000,level:0.5,metal:0.05,freqs:[3200,4500]} },
+  { name:"Hat Cl. II",  family:"hat",   color:"#2ee6a6", glyph:G.HATC_B,  fn:playHat,   cfg:{baseDur:0.02,durRange:0.04,cutBase:7000,cutRange:4000,level:0.45,metal:0.08,freqs:[3800,5200,6100]} },
+  { name:"Hat Op. I",   family:"hat",   color:"#20c6ff", glyph:G.HATO_A,  fn:playHat,   cfg:{baseDur:0.2,durRange:0.4,cutBase:5000,cutRange:3000,level:0.42,metal:0.06,freqs:[3200,4500,6000]} },
+  { name:"Hat Op. II",  family:"hat",   color:"#20c6ff", glyph:G.HATO_B,  fn:playHat,   cfg:{baseDur:0.25,durRange:0.45,cutBase:4500,cutRange:3500,level:0.38,metal:0.1,freqs:[2800,4000,5600,7200]} },
+  { name:"Tom Lo I",    family:"tom",   color:"#9d6dff", glyph:G.TOML_A,  fn:playTom,   cfg:{f0:100,fxRange:40} },
+  { name:"Tom Lo II",   family:"tom",   color:"#9d6dff", glyph:G.TOML_B,  fn:playTom,   cfg:{f0:120,fxRange:50} },
+  { name:"Tom Hi I",    family:"tom",   color:"#c99bff", glyph:G.TOMH_A,  fn:playTom,   cfg:{f0:200,fxRange:60} },
+  { name:"Tom Hi II",   family:"tom",   color:"#c99bff", glyph:G.TOMH_B,  fn:playTom,   cfg:{f0:230,fxRange:70} },
+  { name:"Wave Gen",    family:"wave",  color:"#3ec6ff", glyph:G.WAVE,    fn:playWaveGen, cfg:{} },
+  { name:"Noise Gen",   family:"noise", color:"#8f9bb3", glyph:G.NOISE,   fn:playNoiseGen, cfg:{} },
+  { name:"Ride",        family:"ride",  color:"#ffd447", glyph:G.RIDE,    fn:playRide,  cfg:{} },
+  { name:"Crash",       family:"crash", color:"#ffe98a", glyph:G.CRASH,   fn:playCrash, cfg:{} }
+];
+
+function trigger(idx, time, xy){
+  const def = SOUNDS[idx];
+  const voice = ctx.createGain();
+  voice.gain.value = 1;
+  voice.connect(masterDry);
+  voice.connect(masterWet);
+  def.fn(voice, time, xy, def.cfg);
+}
+
+/* =====================================================================
+   FX ENGINE — 16 effects sharing the persistent FX insert chain
+   (filter / waveshaper / panner / gate / delay-send / reverb-send),
+   plus a handful of generative "texture hit" effects that behave like
+   extra drum voices. xy = {x,y} in 0..1, same as drum voices.
+   ===================================================================== */
+function scheduleAt(time, fn){
+  const ms = Math.max(0, (time - ctx.currentTime) * 1000);
+  setTimeout(fn, ms);
+}
+function fxVoice(){
+  const v = ctx.createGain();
+  v.gain.value = 1;
+  v.connect(masterDry);
+  v.connect(masterWet);
+  return v;
+}
+function crushCurve(steps){
+  const n = 1024; const c = new Float32Array(n);
+  for(let i=0;i<n;i++){ const x=(i/(n-1))*2-1; c[i] = Math.round(x*steps)/steps; }
+  return c;
+}
+function distCurve(amount){
+  const n = 1024; const c = new Float32Array(n);
+  for(let i=0;i<n;i++){ const x=(i/(n-1))*2-1; c[i] = 0.375 * (Math.tanh(x*amount)/Math.tanh(amount)); }
+  return c;
+}
+
+function fxFilterLP(time,xy){
+  // X = cutoff frequency (low..high, exponential), Y = resonance (Q)
+  const cutoff = 90 * Math.pow(9000/90, xy.x);
+  const q = 0.7 + xy.y*17;
+  const hold = 0.13;
+  const release = 0.24;
+  scheduleAt(time, ()=>{ fxFilter.type = "lowpass"; });
+  fxFilter.frequency.cancelScheduledValues(time);
+  fxFilter.frequency.setValueAtTime(20000,time);
+  fxFilter.frequency.exponentialRampToValueAtTime(Math.max(cutoff,40), time+0.015);
+  fxFilter.frequency.setValueAtTime(Math.max(cutoff,40), time+hold);
+  fxFilter.frequency.exponentialRampToValueAtTime(20000, time+hold+release);
+  fxFilter.Q.cancelScheduledValues(time);
+  fxFilter.Q.setValueAtTime(0.7,time);
+  fxFilter.Q.linearRampToValueAtTime(q, time+0.015);
+  fxFilter.Q.setValueAtTime(q, time+hold);
+  fxFilter.Q.linearRampToValueAtTime(0.7, time+hold+release);
+}
+function fxFilterSweepUp(time,xy){
+  const dur = 0.12 + xy.y*0.9;
+  const target = 400 + xy.x*6000;
+  scheduleAt(time, ()=>{ fxFilter.type = "highpass"; });
+  fxFilter.frequency.cancelScheduledValues(time);
+  fxFilter.frequency.setValueAtTime(20,time);
+  fxFilter.frequency.exponentialRampToValueAtTime(Math.max(target,80), time+dur*0.5);
+  fxFilter.frequency.exponentialRampToValueAtTime(20, time+dur);
+}
+function fxBitcrush(time,xy){
+  const dur = 0.08 + xy.y*0.5;
+  const steps = Math.max(3, Math.round(16 - xy.x*13));
+  const curve = crushCurve(steps);
+  scheduleAt(time, ()=>{ fxShaper.curve = curve; });
+  scheduleAt(time+dur, ()=>{ fxShaper.curve = identityCurve; });
+}
+function fxDistortion(time,xy){
+  const dur = 0.08 + xy.y*0.5;
+  const amount = 5 + xy.x*80;
+  const curve = distCurve(amount);
+  scheduleAt(time, ()=>{ fxShaper.curve = curve; });
+  scheduleAt(time+dur, ()=>{ fxShaper.curve = identityCurve; });
+}
+function fxDelayThrow(time,xy){
+  const dur = 0.15 + xy.y*1.0;
+  const dtime = 0.06 + xy.x*0.42;
+  fxDelay.delayTime.setValueAtTime(dtime,time);
+  fxDelayWet.gain.cancelScheduledValues(time);
+  fxDelayWet.gain.setValueAtTime(0.0001,time);
+  fxDelayWet.gain.linearRampToValueAtTime(0.5,time+0.02);
+  fxDelayWet.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+}
+function fxReverbSwell(time,xy){
+  const dur = 0.15 + xy.y*1.2;
+  const peak = 0.06 + xy.x*0.75;
+  masterWet.gain.cancelScheduledValues(time);
+  masterWet.gain.setValueAtTime(0.0001,time);
+  masterWet.gain.linearRampToValueAtTime(peak,time+0.05);
+  masterWet.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  masterWet.gain.setValueAtTime(0,time+dur+0.02);
+}
+function fxGateChop(time,xy){
+  const dur = 0.1 + xy.y*0.6;
+  const rate = 4 + xy.x*16;
+  const n = Math.max(8, Math.floor(dur*rate*2));
+  const curve = new Float32Array(n);
+  for(let i=0;i<n;i++) curve[i] = (i%2===0) ? 1 : 0.05;
+  curve[n-1] = 1;
+  fxGate.gain.cancelScheduledValues(time);
+  fxGate.gain.setValueCurveAtTime(curve,time,dur);
+}
+function fxTremolo(time,xy){
+  const dur = 0.15 + xy.y*1.0;
+  const rate = 2 + xy.x*10;
+  const n = Math.max(16, Math.floor(dur*rate*8));
+  const curve = new Float32Array(n);
+  for(let i=0;i<n;i++){ const t=i/(n-1); curve[i] = 0.5+0.5*Math.sin(t*dur*rate*2*Math.PI)*(1-t*0.15); }
+  curve[n-1] = 1;
+  fxGate.gain.cancelScheduledValues(time);
+  fxGate.gain.setValueCurveAtTime(curve,time,dur);
+}
+function fxAutoPan(time,xy){
+  const dur = 0.2 + xy.y*1.2;
+  const width = 0.3 + xy.x*0.7;
+  const n = 64;
+  const curve = new Float32Array(n);
+  for(let i=0;i<n;i++){ const t=i/(n-1); curve[i] = Math.sin(t*Math.PI*2*(1+xy.x*2))*width*(1-t*0.3); }
+  curve[n-1] = 0;
+  fxPanner.pan.cancelScheduledValues(time);
+  fxPanner.pan.setValueCurveAtTime(curve,time,dur);
+}
+function fxRingMod(time,xy){
+  const dur = 0.15 + xy.y*0.8;
+  const freq = 20 + xy.x*300;
+  const n = Math.max(32, Math.floor(dur*Math.max(freq,20)*4));
+  const curve = new Float32Array(n);
+  for(let i=0;i<n;i++){ const t=i/(n-1); curve[i] = 0.5+0.5*Math.sin(t*dur*freq*2*Math.PI); }
+  curve[n-1] = 1;
+  fxGate.gain.cancelScheduledValues(time);
+  fxGate.gain.setValueCurveAtTime(curve,time,dur);
+}
+function fxRiser(time,xy){
+  const dur = 0.3 + xy.y*1.6;
+  const voice = fxVoice();
+  const osc = ctx.createOscillator(); osc.type = "sawtooth";
+  const filt = ctx.createBiquadFilter(); filt.type = "bandpass"; filt.Q.value = 4;
+  const g = ctx.createGain();
+  const f0 = quantizeToScale(80 + xy.x*200);
+  const f1 = quantizeToScale(f0 + 2000 + xy.x*4000);
+  osc.frequency.setValueAtTime(f0,time);
+  osc.frequency.exponentialRampToValueAtTime(f1,time+dur);
+  filt.frequency.setValueAtTime(f0*2,time);
+  filt.frequency.exponentialRampToValueAtTime(f1*1.2,time+dur);
+  g.gain.setValueAtTime(0.0001,time);
+  g.gain.exponentialRampToValueAtTime(0.4,time+dur*0.8);
+  g.gain.exponentialRampToValueAtTime(0.0001,time+dur+0.05);
+  osc.connect(filt); filt.connect(g); g.connect(voice);
+  osc.start(time); osc.stop(time+dur+0.1);
+}
+function fxImpact(time,xy){
+  const dur = 0.3 + xy.y*1.0;
+  const voice = fxVoice();
+  const osc = ctx.createOscillator(); osc.type = "sine";
+  const g = ctx.createGain();
+  const f0 = quantizeToScale(60 + xy.x*80);
+  osc.frequency.setValueAtTime(f0,time);
+  osc.frequency.exponentialRampToValueAtTime(kt(25),time+dur*0.9);
+  g.gain.setValueAtTime(0.0001,time);
+  g.gain.exponentialRampToValueAtTime(1.0,time+0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  osc.connect(g); g.connect(voice);
+  osc.start(time); osc.stop(time+dur+0.05);
+}
+function fxCrackle(time,xy){
+  const dur = 0.2 + xy.y*0.8;
+  const density = 8 + xy.x*40;
+  const voice = fxVoice();
+  const hits = Math.floor(dur*density);
+  for(let i=0;i<hits;i++){
+    const t = time + Math.random()*dur;
+    const src = ctx.createBufferSource(); src.buffer = noiseBuffer();
+    const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 3000+Math.random()*4000;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.05+Math.random()*0.1,t);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.02);
+    src.connect(hp); hp.connect(g); g.connect(voice);
+    src.start(t); src.stop(t+0.03);
+  }
+}
+function fxNoiseWash(time,xy){
+  const dur = 0.3 + xy.y*1.4;
+  const voice = fxVoice();
+  const src = ctx.createBufferSource(); src.buffer = noiseBuffer(); src.loop = true;
+  const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 400+xy.x*4000; bp.Q.value = 0.9;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001,time);
+  g.gain.linearRampToValueAtTime(0.3,time+dur*0.3);
+  g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  src.connect(bp); bp.connect(g); g.connect(voice);
+  src.start(time); src.stop(time+dur+0.05);
+}
+function fxStutter(time,xy){
+  const dur = 0.15 + xy.y*0.6;
+  const rate = 6 + xy.x*20;
+  const voice = fxVoice();
+  const gap = 1/rate;
+  const hits = Math.floor(dur/gap);
+  for(let i=0;i<hits;i++){
+    const t = time + i*gap;
+    const src = ctx.createBufferSource(); src.buffer = noiseBuffer();
+    const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1200; bp.Q.value = 2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.25*(1-i/hits),t);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+gap*0.6);
+    src.connect(bp); bp.connect(g); g.connect(voice);
+    src.start(t); src.stop(t+gap);
+  }
+}
+// Repeater: tempo-synced roll that retriggers whichever drums are
+// programmed at this same step, rather than generating its own sound.
+// X picks the subdivision (1/8 .. 1/64), Y picks the repeat count.
+const REPEAT_DIVISIONS = [8,16,32,64,96,128,192,256];
+function repeaterDivision(x){
+  const idx = Math.min(REPEAT_DIVISIONS.length-1, Math.floor(x*REPEAT_DIVISIONS.length));
+  return REPEAT_DIVISIONS[idx];
+}
+function repeaterCount(y){
+  return Math.max(2, Math.round(2 + y*14)); // 2..16 refires
+}
+function fxRepeater(time,xy,stepIdx){
+  if(stepIdx == null) return;
+  const denom = repeaterDivision(xy.x);
+  const count = repeaterCount(xy.y);
+  const beatSec = 60/bpm;
+  const interval = (4*beatSec)/denom; // duration of a 1/denom note
+  // snapshot which drums are active at this step (also records motion once)
+  const hits = [];
+  for(let s=0; s<16; s++){
+    if(patterns[s][stepIdx]) hits.push({ s, p: paramForTrigger("drum", s, stepIdx) });
+  }
+  if(hits.length === 0) return;
+  for(let i=0; i<count; i++){
+    const t = time + i*interval;
+    hits.forEach(h => trigger(h.s, t, h.p));
+  }
+}
+
+const FXDEFS = [
+  { name:"Filter LP",   color:"#ff4fd8", glyph:FXG.FILT_DN,   fn:fxFilterLP, xLabel:"CUTOFF", yLabel:"RESO" },
+  { name:"Filter Up",   color:"#4fe1ff", glyph:FXG.FILT_UP,   fn:fxFilterSweepUp },
+  { name:"Bitcrush",    color:"#ffab4f", glyph:FXG.BITCRUSH,  fn:fxBitcrush },
+  { name:"Distortion",  color:"#ff4f4f", glyph:FXG.DISTORT,   fn:fxDistortion },
+  { name:"Delay Throw", color:"#7b8cff", glyph:FXG.DELAY,     fn:fxDelayThrow },
+  { name:"Reverb Swell",color:"#b98dff", glyph:FXG.REVERB,    fn:fxReverbSwell },
+  { name:"Gate Chop",   color:"#4fffb0", glyph:FXG.GATE,      fn:fxGateChop },
+  { name:"Tremolo",     color:"#4fffe1", glyph:FXG.TREMOLO,   fn:fxTremolo },
+  { name:"Auto Pan",    color:"#ffe14f", glyph:FXG.AUTOPAN,   fn:fxAutoPan },
+  { name:"Ring Mod",    color:"#ff4f9d", glyph:FXG.RINGMOD,   fn:fxRingMod },
+  { name:"Riser",       color:"#4fc9ff", glyph:FXG.RISER,     fn:fxRiser },
+  { name:"Impact",      color:"#ff6b4f", glyph:FXG.IMPACT,    fn:fxImpact },
+  { name:"Crackle",     color:"#c9ff4f", glyph:FXG.CRACKLE,   fn:fxCrackle },
+  { name:"Noise Wash",  color:"#9fb0c9", glyph:FXG.NOISEWASH, fn:fxNoiseWash },
+  { name:"Stutter",     color:"#ff4fc9", glyph:FXG.STUTTER,   fn:fxStutter },
+  { name:"Repeater",    color:"#4fffd0", glyph:FXG.GLITCH,    fn:fxRepeater,
+    xLabel:"RATE", yLabel:"REPEATS",
+    formatX:x=>"1/"+repeaterDivision(x), formatY:y=>repeaterCount(y)+"x" }
+];
+
+function fxTrigger(idx, time, xy, stepIdx){
+  FXDEFS[idx].fn(time, xy, stepIdx);
+}
+
+/* =====================================================================
+   SEQUENCER STATE
+   Two independent banks -- DRUM and FX -- each with 16 lanes and their
+   own 16-step pattern. Long-pressing a cell arms a lane within the
+   currently viewed bank; the grid then displays/edits THAT lane's
+   pattern. Both banks always play together in the background; the FX
+   toggle only switches which one the grid + pad are looking at.
+   patterns[lane][step] = on/off. params[lane][step] = recorded {x,y}
+   motion for that hit, or null (falls back to that lane's default).
+   ===================================================================== */
+let bpm = 120;
+const patterns = SOUNDS.map(()=> new Array(16).fill(false));
+const params   = SOUNDS.map(()=> new Array(16).fill(null));
+const soundDefault = SOUNDS.map(()=> ({ x:0.5, y:0.5 }));
+
+const fxPatterns = FXDEFS.map(()=> new Array(16).fill(false));
+const fxParams   = FXDEFS.map(()=> new Array(16).fill(null));
+const fxDefault  = FXDEFS.map(()=> ({ x:0.5, y:0.5 }));
+
+/* ---- Pattern slots (song chaining) -------------------------------
+   The top 8 grid cells become save/recall slots when PAT mode is on.
+   Each slot is a full snapshot of both banks' patterns + automation.
+   Long-press a slot to save the current live state into it.
+   Short-press a slot to recall it -- immediately if stopped, or
+   queued to swap in at the next bar boundary if playing, so you can
+   chain patterns together into a song while the beat keeps rolling.
+   The bottom 8 cells are reserved for a future feature and are inert.
+   ------------------------------------------------------------------- */
+const patternSlots = new Array(8).fill(null);
+let activeSlot = null;
+let queuedSlot = null;
+
+function snapshotState(){
+  return {
+    patterns: patterns.map(r=>r.slice()),
+    params: params.map(r=>r.map(p=> p ? {x:p.x,y:p.y} : null)),
+    soundDefault: soundDefault.map(d=>({x:d.x,y:d.y})),
+    fxPatterns: fxPatterns.map(r=>r.slice()),
+    fxParams: fxParams.map(r=>r.map(p=> p ? {x:p.x,y:p.y} : null)),
+    fxDefault: fxDefault.map(d=>({x:d.x,y:d.y}))
+  };
+}
+function applySnapshot(snap){
+  for(let s=0; s<16; s++){
+    patterns[s] = snap.patterns[s].slice();
+    params[s] = snap.params[s].map(p=> p ? {x:p.x,y:p.y} : null);
+    fxPatterns[s] = snap.fxPatterns[s].slice();
+    fxParams[s] = snap.fxParams[s].map(p=> p ? {x:p.x,y:p.y} : null);
+    soundDefault[s] = {x:snap.soundDefault[s].x, y:snap.soundDefault[s].y};
+    fxDefault[s] = {x:snap.fxDefault[s].x, y:snap.fxDefault[s].y};
+  }
+}
+
+const DEFAULT_PARAM = { x:0.5, y:0.5 };
+
+let bank = "drum"; // "drum" | "fx"
+let patternMode = false;
+let armedDrum = 0;
+let armedFx = 0;
+let padDown = false;
+let liveXY = { x:0.5, y:0.5 };
+
+let playing = false;
+let current16th = 0;
+let nextNoteTime = 0;
+const lookahead = 25.0;      // ms
+const scheduleAheadTime = 0.1; // s
+let timerID = null;
+const noteQueue = []; // {step, time}
+
+function secondsPerStep(){ return (60.0/bpm)/4; }
+
+function defsFor(b){ return b==="drum" ? SOUNDS : FXDEFS; }
+function patternsFor(b){ return b==="drum" ? patterns : fxPatterns; }
+function paramsFor(b){ return b==="drum" ? params : fxParams; }
+function defaultsFor(b){ return b==="drum" ? soundDefault : fxDefault; }
+function armedFor(b){ return b==="drum" ? armedDrum : armedFx; }
+function setArmedFor(b, i){ if(b==="drum") armedDrum = i; else armedFx = i; }
+
+// Resolve/record the parameters a given lane should use for a given step.
+// Recording only happens while that lane's bank is the one being viewed
+// (armed) and the pad is currently held.
+function paramForTrigger(b, laneIdx, stepIdx){
+  const pArr = paramsFor(b);
+  const dArr = defaultsFor(b);
+  if(bank === b && laneIdx === armedFor(b) && padDown){
+    pArr[laneIdx][stepIdx] = { x: liveXY.x, y: liveXY.y };
+  }
+  return pArr[laneIdx][stepIdx] || dArr[laneIdx] || DEFAULT_PARAM;
+}
+
+function scheduleStep(stepIdx, time){
+  for(let s=0; s<16; s++){
+    if(patterns[s][stepIdx]){
+      trigger(s, time, paramForTrigger("drum", s, stepIdx));
+    }
+  }
+  for(let s=0; s<16; s++){
+    if(fxPatterns[s][stepIdx]){
+      fxTrigger(s, time, paramForTrigger("fx", s, stepIdx), stepIdx);
+    }
+  }
+  noteQueue.push({ step:stepIdx, time:time });
+}
+
+function advanceNote(){
+  nextNoteTime += secondsPerStep();
+  current16th = (current16th + 1) % 16;
+}
+
+function schedulerLoop(){
+  while(nextNoteTime < ctx.currentTime + scheduleAheadTime){
+    if(current16th === 0 && queuedSlot !== null){
+      applySnapshot(patternSlots[queuedSlot]);
+      activeSlot = queuedSlot;
+      queuedSlot = null;
+      if(patternMode) renderPatternGrid();
+      else renderGridStates();
+    }
+    scheduleStep(current16th, nextNoteTime);
+    advanceNote();
+  }
+  timerID = setTimeout(schedulerLoop, lookahead);
+}
+
+function startPlayback(){
+  if(playing) return;
+  playing = true;
+  current16th = 0;
+  nextNoteTime = ctx.currentTime + 0.05;
+  schedulerLoop();
+  requestAnimationFrame(drawLoop);
+}
+
+function stopPlayback(){
+  playing = false;
+  clearTimeout(timerID);
+  noteQueue.length = 0;
+  clearPlayheadVisual();
+}
+
+/* =====================================================================
+   UI BUILD
+   ===================================================================== */
+const gridEl = document.getElementById("grid");
+const cells = [];       // cell wrapper elements
+const cellCanvases = []; // glyph canvas per cell (redrawn on bank switch)
+const cellFams = [];     // name label per cell (redrawn on bank switch)
+
+SOUNDS.forEach((def, i)=>{
+  const cell = document.createElement("div");
+  cell.className = "cell voxel";
+  cell.style.setProperty("--accent", def.color);
+
+  const idx = document.createElement("div");
+  idx.className = "idx";
+  idx.textContent = String(i+1).padStart(2,"0");
+
+  const canvas = document.createElement("canvas");
+  canvas.className = "glyph pxl";
+  drawGlyph(canvas, def.glyph, def.color);
+
+  const fam = document.createElement("div");
+  fam.className = "fam";
+  fam.textContent = def.name;
+
+  const flash = document.createElement("div");
+  flash.className = "flash";
+
+  const recDot = document.createElement("div");
+  recDot.className = "rec-dot";
+
+  cell.appendChild(idx);
+  cell.appendChild(canvas);
+  cell.appendChild(fam);
+  cell.appendChild(flash);
+  cell.appendChild(recDot);
+  gridEl.appendChild(cell);
+  cells.push(cell);
+  cellCanvases.push(canvas);
+  cellFams.push(fam);
+
+  attachCellHandlers(cell, i);
+});
+
+function attachCellHandlers(cell, i){
+  let pressTimer = null;
+  let longFired = false;
+  let startX=0, startY=0, moved=false;
+
+  function onDown(e){
+    e.preventDefault();
+    const pt = e.touches ? e.touches[0] : e;
+    startX = pt.clientX; startY = pt.clientY; moved = false;
+    longFired = false;
+    pressTimer = setTimeout(()=>{
+      longFired = true;
+      if(patternMode){
+        if(i < 8){ savePatternSlot(i); pulseCell(cell); }
+      } else {
+        armCell(i);
+        previewArmedLane(i);
+        pulseCell(cell);
+      }
+    }, 420);
+  }
+  function onMove(e){
+    const pt = e.touches ? e.touches[0] : e;
+    if(Math.abs(pt.clientX-startX)>14 || Math.abs(pt.clientY-startY)>14) moved = true;
+  }
+  function onUp(e){
+    clearTimeout(pressTimer);
+    if(!longFired && !moved){
+      if(patternMode){
+        if(i < 8) selectPatternSlot(i);
+      } else {
+        // short press: toggle THIS step (position i) of the currently
+        // ARMED lane's pattern — not the lane that lives in cell i
+        toggleStep(i);
+      }
+    }
+  }
+  function onCancel(){ clearTimeout(pressTimer); }
+
+  cell.addEventListener("touchstart", onDown, {passive:false});
+  cell.addEventListener("touchmove", onMove, {passive:true});
+  cell.addEventListener("touchend", onUp, {passive:true});
+  cell.addEventListener("touchcancel", onCancel, {passive:true});
+
+  cell.addEventListener("mousedown", onDown);
+  window.addEventListener("mousemove", onMove);
+  cell.addEventListener("mouseup", onUp);
+  cell.addEventListener("mouseleave", onCancel);
+}
+
+function pulseCell(cell){
+  cell.style.transform = "translateY(2px) scale(0.96)";
+  setTimeout(()=>{ cell.style.transform=""; }, 90);
+}
+
+// short-press on cell `stepIdx` toggles that step for the ARMED lane
+// (in whichever bank -- drum or fx -- is currently being viewed)
+function toggleStep(stepIdx){
+  const pat = patternsFor(bank);
+  const armed = armedFor(bank);
+  pat[armed][stepIdx] = !pat[armed][stepIdx];
+  renderCellState(stepIdx);
+  if(!playing) previewStep(stepIdx);
+}
+
+// preview exactly what a given step will sound like for the armed lane
+function previewStep(stepIdx){
+  if(!ctx) return;
+  const armed = armedFor(bank);
+  const p = padDown ? liveXY : (paramsFor(bank)[armed][stepIdx] || defaultsFor(bank)[armed]);
+  fireLane(bank, armed, ctx.currentTime + 0.01, p, stepIdx);
+}
+
+// preview the lane itself (used right when you arm/select it)
+function previewArmedLane(stepIdx){
+  if(!ctx) return;
+  const armed = armedFor(bank);
+  fireLane(bank, armed, ctx.currentTime + 0.01, defaultsFor(bank)[armed], stepIdx != null ? stepIdx : armed);
+}
+
+function fireLane(b, laneIdx, time, xy, stepIdx){
+  if(b === "drum") trigger(laneIdx, time, xy);
+  else fxTrigger(laneIdx, time, xy, stepIdx);
+}
+
+function armCell(i){
+  setArmedFor(bank, i);
+  cells.forEach((c,ci)=> c.classList.toggle("is-armed", ci===i));
+  gridEl.style.setProperty("--armed-accent", defsFor(bank)[i].color);
+  renderGridStates();
+  updateArmedStrip();
+  updatePadThumbFromArmed();
+}
+
+// refresh every cell's on/off + motion-dot display to reflect the
+// ARMED lane's pattern (called whenever the armed lane or bank changes)
+function renderGridStates(){
+  for(let s=0; s<16; s++) renderCellState(s);
+}
+function renderCellState(stepIdx){
+  const cell = cells[stepIdx];
+  const armed = armedFor(bank);
+  cell.classList.toggle("is-on", !!patternsFor(bank)[armed][stepIdx]);
+  cell.classList.toggle("has-motion", !!paramsFor(bank)[armed][stepIdx]);
+}
+
+function updateArmedStrip(){
+  const defs = defsFor(bank);
+  const armed = armedFor(bank);
+  const def = defs[armed];
+  document.getElementById("armedSwatch").style.background = def.color;
+  document.getElementById("armedName").textContent = def.name.toUpperCase();
+  document.getElementById("bankBadge").textContent = bank === "drum" ? "DRUM" : "FX";
+  document.getElementById("labelTone").textContent = def.xLabel || (bank === "drum" ? "TONE" : "AMOUNT");
+  document.getElementById("labelDecay").textContent = def.yLabel || (bank === "drum" ? "DECAY" : "TIME");
+  const p = defaultsFor(bank)[armed];
+  document.getElementById("valTone").textContent = def.formatX ? def.formatX(p.x) : Math.round(p.x*100);
+  document.getElementById("valDecay").textContent = def.formatY ? def.formatY(p.y) : Math.round(p.y*100);
+  document.getElementById("padThumb").style.setProperty("--accent-color", def.color);
+}
+
+// redraw all 16 glyphs/labels to match the currently viewed bank, then
+// re-sync the grid + strip + pad to that bank's armed lane
+function rebuildGridForBank(){
+  const defs = defsFor(bank);
+  defs.forEach((def, i)=>{
+    drawGlyph(cellCanvases[i], def.glyph, def.color);
+    cellFams[i].textContent = def.name;
+    cells[i].style.setProperty("--accent", def.color);
+    cells[i].classList.remove("cell-disabled", "is-queued");
+  });
+  armCell(armedFor(bank));
+}
+
+/* ---- Pattern-mode grid: top 8 cells = save/recall slots, bottom 8
+   reserved for a future feature ---------------------------------- */
+const PAT_ACCENT = "#ffd447";
+
+function savePatternSlot(i){
+  patternSlots[i] = snapshotState();
+  activeSlot = i;
+  queuedSlot = null;
+  renderPatternGrid();
+}
+function selectPatternSlot(i){
+  if(!patternSlots[i]){ pulseCell(cells[i]); return; }
+  if(playing){
+    queuedSlot = i;
+  } else {
+    applySnapshot(patternSlots[i]);
+    activeSlot = i;
+    queuedSlot = null;
+  }
+  renderPatternGrid();
+}
+
+function rebuildGridForPattern(){
+  gridEl.style.setProperty("--armed-accent", PAT_ACCENT);
+  for(let i=0;i<16;i++){
+    cells[i].style.setProperty("--accent", PAT_ACCENT);
+  }
+  renderPatternGrid();
+  updatePatternStrip();
+}
+
+function renderPatternGrid(){
+  for(let i=0;i<8;i++){
+    const cell = cells[i];
+    cell.classList.remove("cell-disabled");
+    const filled = !!patternSlots[i];
+    drawGlyph(cellCanvases[i], filled ? PATG : PATG_EMPTY, PAT_ACCENT);
+    cellFams[i].textContent = i===activeSlot ? "ACTIVE" : (i===queuedSlot ? "QUEUED" : (filled ? "SAVED" : "EMPTY"));
+    cell.classList.toggle("is-on", filled);
+    cell.classList.toggle("is-armed", i===activeSlot);
+    cell.classList.toggle("is-queued", i===queuedSlot);
+    cell.classList.remove("has-motion", "is-playhead");
+  }
+  for(let i=8;i<16;i++){
+    const cell = cells[i];
+    drawGlyph(cellCanvases[i], PATG_EMPTY, "#5a5270");
+    cellFams[i].textContent = "SOON";
+    cell.classList.remove("is-on","is-armed","is-queued","has-motion","is-playhead");
+    cell.classList.add("cell-disabled");
+  }
+  updatePatternStrip();
+}
+
+function updatePatternStrip(){
+  document.getElementById("armedSwatch").style.background = PAT_ACCENT;
+  document.getElementById("armedName").textContent = "HOLD TO SAVE \u00b7 TAP TO LOAD";
+  document.getElementById("bankBadge").textContent = "PAT";
+  document.getElementById("labelTone").textContent = "ACTIVE";
+  document.getElementById("labelDecay").textContent = "QUEUED";
+  document.getElementById("valTone").textContent = activeSlot!==null ? (activeSlot+1) : "\u2014";
+  document.getElementById("valDecay").textContent = queuedSlot!==null ? (queuedSlot+1) : "\u2014";
+  document.getElementById("padThumb").style.setProperty("--accent-color", PAT_ACCENT);
+}
+
+/* =====================================================================
+   XY PAD
+   ===================================================================== */
+const pad = document.getElementById("xyPad");
+const thumb = document.getElementById("padThumb");
+const recFlag = document.getElementById("recFlag");
+
+function setThumbPos(x,y){
+  const r = pad.getBoundingClientRect();
+  thumb.style.left = (x*r.width)+"px";
+  thumb.style.top = ((1-y)*r.height)+"px";
+}
+
+function updatePadThumbFromArmed(){
+  const p = defaultsFor(bank)[armedFor(bank)];
+  liveXY = { x:p.x, y:p.y };
+  setThumbPos(p.x, p.y);
+}
+
+function padPointFromEvent(e){
+  const r = pad.getBoundingClientRect();
+  const pt = e.touches ? e.touches[0] : e;
+  let x = (pt.clientX - r.left) / r.width;
+  let y = 1 - (pt.clientY - r.top) / r.height;
+  x = Math.max(0, Math.min(1,x));
+  y = Math.max(0, Math.min(1,y));
+  return {x,y};
+}
+
+function padStart(e){
+  e.preventDefault();
+  padDown = true;
+  const p = padPointFromEvent(e);
+  liveXY = p;
+  setThumbPos(p.x,p.y);
+  if(!playing){
+    // stopped: pad edits the armed lane's default (base) parameters
+    defaultsFor(bank)[armedFor(bank)] = { x:p.x, y:p.y };
+    updateArmedStrip();
+  } else {
+    // playing: pad enters live motion-record mode for the armed lane --
+    // each of its active steps will snapshot the finger position as it fires
+    recFlag.classList.add("show");
+  }
+}
+function padMove(e){
+  if(!padDown) return;
+  e.preventDefault();
+  const p = padPointFromEvent(e);
+  liveXY = p;
+  setThumbPos(p.x,p.y);
+  if(!playing){
+    defaultsFor(bank)[armedFor(bank)] = { x:p.x, y:p.y };
+    updateArmedStrip();
+  } else {
+    const def = defsFor(bank)[armedFor(bank)];
+    document.getElementById("valTone").textContent = def.formatX ? def.formatX(p.x) : Math.round(p.x*100);
+    document.getElementById("valDecay").textContent = def.formatY ? def.formatY(p.y) : Math.round(p.y*100);
+  }
+}
+function padEnd(){
+  padDown = false;
+  recFlag.classList.remove("show");
+}
+
+pad.addEventListener("touchstart", padStart, {passive:false});
+pad.addEventListener("touchmove", padMove, {passive:false});
+pad.addEventListener("touchend", padEnd, {passive:true});
+pad.addEventListener("touchcancel", padEnd, {passive:true});
+pad.addEventListener("mousedown", padStart);
+window.addEventListener("mousemove", padMove);
+window.addEventListener("mouseup", padEnd);
+
+/* =====================================================================
+   PLAYHEAD VISUALS (synced against scheduled note queue)
+   ===================================================================== */
+function clearPlayheadVisual(){
+  cells.forEach(c=> c.classList.remove("is-playhead"));
+}
+
+function drawLoop(){
+  if(!playing) return;
+  const now = ctx.currentTime;
+  const armed = armedFor(bank);
+  const pArr = paramsFor(bank);
+  while(noteQueue.length && noteQueue[0].time < now){
+    const n = noteQueue.shift();
+    clearPlayheadVisual();
+    cells[n.step].classList.add("is-playhead");
+    // reflect any motion just recorded on the armed lane's step
+    if(pArr[armed][n.step]){
+      cells[n.step].classList.add("has-motion");
+    }
+  }
+  requestAnimationFrame(drawLoop);
+}
+
+/* =====================================================================
+   TRANSPORT / TOPBAR
+   ===================================================================== */
+const playBtn = document.getElementById("playBtn");
+playBtn.addEventListener("click", ()=>{
+  if(!playing){
+    startPlayback();
+    playBtn.textContent = "■";
+    playBtn.classList.add("playing");
+  } else {
+    stopPlayback();
+    playBtn.textContent = "▶";
+    playBtn.classList.remove("playing");
+  }
+});
+
+document.getElementById("clearBtn").addEventListener("click", ()=>{
+  if(patternMode) return; // clearing a slot isn't wired here to avoid accidental data loss
+  // clears only the ARMED lane's pattern, so you can wipe one
+  // drum or effect without disturbing the others
+  const armed = armedFor(bank);
+  patternsFor(bank)[armed].fill(false);
+  paramsFor(bank)[armed].fill(null);
+  renderGridStates();
+});
+
+const fxBtn = document.getElementById("fxBtn");
+fxBtn.addEventListener("click", ()=>{
+  if(patternMode) return;
+  bank = (bank === "drum") ? "fx" : "drum";
+  fxBtn.classList.toggle("active", bank === "fx");
+  rebuildGridForBank();
+});
+
+const patBtn = document.getElementById("patBtn");
+patBtn.addEventListener("click", ()=>{
+  patternMode = !patternMode;
+  patBtn.classList.toggle("active", patternMode);
+  document.getElementById("xyPad").classList.toggle("pad-disabled", patternMode);
+  if(patternMode){
+    rebuildGridForPattern();
+  } else {
+    rebuildGridForBank();
+  }
+});
+
+function setBpm(v){
+  bpm = Math.max(40, Math.min(220, v));
+  document.getElementById("mainBpmVal").textContent = bpm;
+}
+document.getElementById("mainBpmDown").addEventListener("click", ()=> setBpm(bpm-1));
+document.getElementById("mainBpmUp").addEventListener("click", ()=> setBpm(bpm+1));
+
+/* =====================================================================
+   INIT SCREEN LOGIC
+   ===================================================================== */
+const bpmSlider = document.getElementById("bpmSlider");
+const bpmReadout = document.getElementById("bpmReadout");
+
+function syncInitBpm(){
+  const v = parseInt(bpmSlider.value,10);
+  bpmReadout.textContent = v;
+  bpm = v;
+}
+bpmSlider.addEventListener("input", syncInitBpm);
+document.getElementById("bpmDown").addEventListener("click", ()=>{ bpmSlider.value = Math.max(40, +bpmSlider.value-1); syncInitBpm(); });
+document.getElementById("bpmUp").addEventListener("click", ()=>{ bpmSlider.value = Math.min(220, +bpmSlider.value+1); syncInitBpm(); });
+syncInitBpm();
+
+// ---- Scale + Key chip rows (RANDOM by default; picking a chip pins it) ----
+let selectedScaleName = null; // null = randomize at Start
+let selectedKeyIndex = null;  // null = randomize at Start
+
+function buildChipRow(container, options, onPick){
+  const chips = {};
+  const randomChip = document.createElement("div");
+  randomChip.className = "chip random-chip active";
+  randomChip.textContent = "RANDOM";
+  randomChip.addEventListener("click", ()=> onPick(null));
+  container.appendChild(randomChip);
+  options.forEach(label=>{
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.textContent = label.toUpperCase();
+    chip.addEventListener("click", ()=> onPick(label));
+    container.appendChild(chip);
+    chips[label] = chip;
+  });
+  return { randomChip, chips };
+}
+
+const scaleUI = buildChipRow(document.getElementById("scaleRow"), SCALE_NAMES, (name)=>{
+  selectedScaleName = name;
+  scaleUI.randomChip.classList.toggle("active", name===null);
+  SCALE_NAMES.forEach(n=> scaleUI.chips[n].classList.toggle("active", n===name));
+});
+const keyUI = buildChipRow(document.getElementById("keyRow"), NOTE_NAMES, (name)=>{
+  selectedKeyIndex = name===null ? null : NOTE_NAMES.indexOf(name);
+  keyUI.randomChip.classList.toggle("active", name===null);
+  NOTE_NAMES.forEach(n=> keyUI.chips[n].classList.toggle("active", n===name));
+});
+
+document.getElementById("startBtn").addEventListener("click", ()=>{
+  const scaleName = selectedScaleName || SCALE_NAMES[Math.floor(Math.random()*SCALE_NAMES.length)];
+  const keyIndex = selectedKeyIndex !== null ? selectedKeyIndex : Math.floor(Math.random()*12);
+  resolveScaleAndKey(scaleName, keyIndex);
+
+  initAudio();
+  if(ctx.state === "suspended") ctx.resume();
+  document.getElementById("main").classList.remove("hidden");
+  document.getElementById("init").classList.add("hidden");
+  document.getElementById("mainBpmVal").textContent = bpm;
+  armCell(0);
+});
+
+/* prevent iOS rubber-band / double-tap zoom */
+document.addEventListener("gesturestart", e=> e.preventDefault());
+document.addEventListener("touchmove", e=>{ if(e.scale && e.scale!==1) e.preventDefault(); }, {passive:false});
+
+})();
+</script>
+</body>
+</html>
