@@ -1528,17 +1528,85 @@ function drawLoop(){
    TRANSPORT / TOPBAR
    ===================================================================== */
 const playBtn = document.getElementById("playBtn");
-playBtn.addEventListener("click", ()=>{
-  if(!playing){
-    startPlayback();
-    playBtn.textContent = "■";
-    playBtn.classList.add("playing");
-  } else {
+
+function clearAllPatterns(){
+  // total reset of live sequencer state -- everything except the
+  // saved pattern slots, which are left untouched
+  if(playing){
     stopPlayback();
     playBtn.textContent = "▶";
     playBtn.classList.remove("playing");
   }
-});
+  for(let s=0; s<16; s++){
+    patterns[s].fill(false);
+    params[s].fill(null);
+    soundDefault[s] = { x:0.5, y:0.5 };
+    fxPatterns[s].fill(false);
+    fxParams[s].fill(null);
+    fxDefault[s] = { x:0.5, y:0.5 };
+  }
+  armedDrum = 0;
+  armedFx = 0;
+  bank = "drum";
+  activeSlot = null;
+  queuedSlot = null;
+  if(patternMode){
+    patternMode = false;
+    patBtn.classList.remove("active");
+    document.getElementById("xyPad").classList.remove("pad-disabled");
+  }
+  fxBtn.classList.remove("active");
+  rebuildGridForBank();
+}
+
+let playPressTimer = null;
+let playLongFired = false;
+let playStartX = 0, playStartY = 0, playMoved = false;
+
+function playDown(e){
+  e.preventDefault();
+  const pt = e.touches ? e.touches[0] : e;
+  playStartX = pt.clientX; playStartY = pt.clientY; playMoved = false;
+  playLongFired = false;
+  playPressTimer = setTimeout(()=>{
+    playLongFired = true;
+    // long-press only acts as Clear All while the button is showing
+    // red/stop (i.e. currently playing) -- a long-press while green
+    // (stopped) is intentionally a no-op
+    if(playing){
+      clearAllPatterns();
+      pulseCell(playBtn);
+    }
+  }, 420);
+}
+function playMove(e){
+  const pt = e.touches ? e.touches[0] : e;
+  if(Math.abs(pt.clientX-playStartX)>14 || Math.abs(pt.clientY-playStartY)>14) playMoved = true;
+}
+function playUp(){
+  clearTimeout(playPressTimer);
+  if(!playLongFired && !playMoved){
+    if(!playing){
+      startPlayback();
+      playBtn.textContent = "■";
+      playBtn.classList.add("playing");
+    } else {
+      stopPlayback();
+      playBtn.textContent = "▶";
+      playBtn.classList.remove("playing");
+    }
+  }
+}
+function playCancel(){ clearTimeout(playPressTimer); }
+
+playBtn.addEventListener("touchstart", playDown, {passive:false});
+playBtn.addEventListener("touchmove", playMove, {passive:true});
+playBtn.addEventListener("touchend", playUp, {passive:true});
+playBtn.addEventListener("touchcancel", playCancel, {passive:true});
+playBtn.addEventListener("mousedown", playDown);
+window.addEventListener("mousemove", playMove);
+playBtn.addEventListener("mouseup", playUp);
+playBtn.addEventListener("mouseleave", playCancel);
 
 document.getElementById("clearBtn").addEventListener("click", ()=>{
   if(patternMode) return; // clearing a slot isn't wired here to avoid accidental data loss
