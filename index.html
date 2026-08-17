@@ -301,6 +301,23 @@ input[type=range]::-webkit-slider-thumb{
 .axis-label.x-hi{ right:10px; bottom:8px; }
 .axis-label.y-lo{ left:10px; bottom:8px; }
 .axis-label.y-hi{ left:10px; top:8px; }
+#padNoteLines{
+  position:absolute; inset:0; pointer-events:none; display:none;
+}
+.note-line{
+  position:absolute; top:0; bottom:0; width:1px;
+  background:rgba(255,255,255,0.14);
+}
+.note-line.note-line-root{
+  width:2px; background:rgba(255,212,71,0.55);
+}
+.note-label{
+  position:absolute; bottom:5px;
+  font-size:7px; letter-spacing:0.5px; text-align:center;
+  color:rgba(255,255,255,0.4);
+  white-space:nowrap; overflow:hidden;
+}
+.note-label.note-label-root{ color:var(--gold); font-weight:800; }
 #padThumb{
   position:absolute; width:34px; height:34px; margin:-17px;
   border-radius:8px;
@@ -388,6 +405,7 @@ input[type=range]::-webkit-slider-thumb{
 
     <div class="pad-wrap">
       <div id="xyPad">
+        <div id="padNoteLines"></div>
         <div class="axis-label y-hi">LONG</div>
         <div class="axis-label y-lo">TONE →</div>
         <div class="axis-label x-hi">BRIGHT</div>
@@ -422,6 +440,8 @@ const G = {
   TOMH_B:["..####..",".######.","########","########",".######.","..####..","........","........"],
   WAVE:["........","##.....#","..#...#.","...#.#..","....#...","...#.#..","..#...#.",".#.....#"],
   NOISE:["#..#....","...#..#.","..#...#.","#....#..","..#..#..",".#.....#","...#..#.","#..#...."],
+  BASS:["........","........","##....##","###..###",".######.","..####..","........","........"],
+  WOOD:["........",".######.","########","##....##","##....##","########",".######.","........"],
   RIDE:["...##...","..#..#..",".#.##.#.","#..##..#","#..##..#",".#.##.#.","..#..#..","...##..."],
   CRASH:["#..#..#.",".#.##.#.","..####..","##....##","..####..",".#.##.#.","#..#..#.","........"]
 };
@@ -551,6 +571,50 @@ function quantizeToScale(freq){
   return freq;
 }
 
+function noteNameForMidi(m){
+  const pc = ((m%12)+12)%12;
+  const octave = Math.floor(m/12) - 1;
+  return NOTE_NAMES[pc] + octave;
+}
+
+// List the actual in-scale notes that fall within [base, base+range],
+// ascending. This is the single source of truth for a melodic sound's
+// note lanes -- both playback and the pad's visual grid divide the X
+// axis into exactly this many EQUAL-width lanes, one per note, instead
+// of quantizing a raw linear-Hz sweep (which packed lanes densely at
+// the low end and spread them out at the high end).
+function scaleNotesInRange(base, range){
+  const minF = base, maxF = base + range;
+  const minM = Math.floor(freqToMidi(minF)) - 1;
+  const maxM = Math.ceil(freqToMidi(maxF)) + 1;
+  const notes = [];
+  for(let m = minM; m <= maxM; m++){
+    if(!isInScale(m)) continue;
+    const f = midiToFreq(m);
+    if(f >= minF*0.97 && f <= maxF*1.03) notes.push(m);
+  }
+  if(notes.length === 0) notes.push(Math.round(freqToMidi(base)));
+  notes.sort((a,b)=>a-b);
+  return notes;
+}
+
+// Uniformly map an X position (0..1) to one of the equal-width note
+// lanes for a melodic sound -- this is what synth functions call
+// instead of quantizing a raw linear frequency sweep.
+function xToScaleFreq(x, base, range){
+  const notes = scaleNotesInRange(base, range);
+  const idx = Math.min(notes.length-1, Math.floor(x*notes.length));
+  return midiToFreq(notes[idx]);
+}
+
+// Equal-width note-lane boundaries for the pad's visual grid -- always
+// exactly 1/N of the pad per note, matching xToScaleFreq exactly.
+function computeNoteZones(base, range){
+  const notes = scaleNotesInRange(base, range);
+  const n = notes.length;
+  return notes.map((midi, i) => ({ startX: i/n, endX: (i+1)/n, midi }));
+}
+
 function initAudio(){
   if(ctx) return;
   const AC = window.AudioContext || window.webkitAudioContext;
@@ -621,7 +685,7 @@ function initAudio(){
 /* ---- per-family synth voices. xy = {x,y} in 0..1 ---- */
 function playKick(out,time,xy,cfg){
   const dur = 0.14 + xy.y*0.5;
-  const f0 = quantizeToScale(cfg.f0 + xy.x*60);
+  const f0 = xToScaleFreq(xy.x, cfg.f0, 60);
   const f1 = kt(cfg.f1);
   const osc = ctx.createOscillator(); osc.type = cfg.oscType || "sine";
   const g = ctx.createGain();
@@ -645,7 +709,7 @@ function playKick(out,time,xy,cfg){
 
 function playSnare(out,time,xy,cfg){
   const dur = 0.08 + xy.y*0.3;
-  const osc = ctx.createOscillator(); osc.type="triangle"; osc.frequency.value = quantizeToScale(cfg.tone + xy.x*80);
+  const osc = ctx.createOscillator(); osc.type="triangle"; osc.frequency.value = xToScaleFreq(xy.x, cfg.tone, 80);
   const og = ctx.createGain();
   og.gain.setValueAtTime(cfg.toneLevel,time);
   og.gain.exponentialRampToValueAtTime(0.0001,time+dur*0.5);
@@ -681,7 +745,7 @@ function playHat(out,time,xy,cfg){
 
 function playTom(out,time,xy,cfg){
   const dur = 0.18 + xy.y*0.55;
-  const f0 = quantizeToScale(cfg.f0 + xy.x*cfg.fxRange);
+  const f0 = xToScaleFreq(xy.x, cfg.f0, cfg.fxRange);
   const osc = ctx.createOscillator(); osc.type="sine";
   const g = ctx.createGain();
   osc.frequency.setValueAtTime(f0,time);
@@ -695,7 +759,7 @@ function playTom(out,time,xy,cfg){
 
 function playWaveGen(out,time,xy){
   const dur = 0.15 + xy.y*0.7;
-  const freq = quantizeToScale(110 + xy.x*680);
+  const freq = xToScaleFreq(xy.x, 110, 680);
   const osc = ctx.createOscillator(); osc.type="sawtooth"; osc.frequency.value = freq;
   const filt = ctx.createBiquadFilter(); filt.type="lowpass"; filt.frequency.value = 700+xy.x*4200;
   const g = ctx.createGain();
@@ -706,36 +770,45 @@ function playWaveGen(out,time,xy){
   osc.start(time); osc.stop(time+dur+0.03);
 }
 
-function playNoiseGen(out,time,xy){
-  const dur = 0.1 + xy.y*0.6;
-  const src = ctx.createBufferSource(); src.buffer = noiseBuffer();
-  const filt = ctx.createBiquadFilter(); filt.type="bandpass"; filt.frequency.value = 300+xy.x*5200; filt.Q.value = 1.1;
+function playBassSynth(out,time,xy){
+  const dur = 0.15 + xy.y*0.9;
+  const freq = xToScaleFreq(xy.x, 40, 160);
+  const osc = ctx.createOscillator(); osc.type="sawtooth"; osc.frequency.value = freq;
+  const sub = ctx.createOscillator(); sub.type="sine"; sub.frequency.value = freq*0.5;
+  const filt = ctx.createBiquadFilter(); filt.type="lowpass"; filt.frequency.value = 260+xy.x*1300;
   const g = ctx.createGain();
+  const subGain = ctx.createGain(); subGain.gain.value = 0.55;
   g.gain.setValueAtTime(0.0001,time);
-  g.gain.exponentialRampToValueAtTime(0.6,time+0.008);
+  g.gain.exponentialRampToValueAtTime(0.6,time+0.015);
   g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
-  src.connect(filt); filt.connect(g); g.connect(out);
-  src.start(time); src.stop(time+dur+0.03);
+  osc.connect(filt); filt.connect(g);
+  sub.connect(subGain); subGain.connect(g);
+  g.connect(out);
+  osc.start(time); osc.stop(time+dur+0.03);
+  sub.start(time); sub.stop(time+dur+0.03);
 }
 
-function playRide(out,time,xy){
-  const dur = 0.4 + xy.y*1.6;
-  const src = ctx.createBufferSource(); src.buffer = noiseBuffer();
-  const hp = ctx.createBiquadFilter(); hp.type="highpass"; hp.frequency.value = 4000+xy.x*4000;
+function playWoodblock(out,time,xy){
+  const dur = 0.05 + xy.y*0.13;
+  const freq = xToScaleFreq(xy.x, 500, 1500);
+  const osc = ctx.createOscillator(); osc.type = "sine";
+  osc.frequency.setValueAtTime(freq*1.02, time);
+  osc.frequency.exponentialRampToValueAtTime(freq, time+0.02);
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.0001,time);
-  g.gain.exponentialRampToValueAtTime(0.32,time+0.01);
+  g.gain.exponentialRampToValueAtTime(0.7,time+0.003);
   g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
-  src.connect(hp); hp.connect(g); g.connect(out);
-  src.start(time); src.stop(time+dur+0.06);
-  [3000,4200,5800].forEach(f=>{
-    const o = ctx.createOscillator(); o.type="triangle"; o.frequency.value = kt(f)*(0.9+xy.x*0.4);
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(0.1,time);
-    og.gain.exponentialRampToValueAtTime(0.0001,time+dur*0.9);
-    o.connect(og); og.connect(g);
-    o.start(time); o.stop(time+dur);
-  });
+  osc.connect(g); g.connect(out);
+  osc.start(time); osc.stop(time+dur+0.02);
+
+  // short knock transient
+  const src = ctx.createBufferSource(); src.buffer = noiseBuffer();
+  const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = freq*1.5; bp.Q.value = 6;
+  const ng = ctx.createGain();
+  ng.gain.setValueAtTime(0.5,time);
+  ng.gain.exponentialRampToValueAtTime(0.0001,time+0.015);
+  src.connect(bp); bp.connect(ng); ng.connect(out);
+  src.start(time); src.stop(time+0.02);
 }
 
 function playCrash(out,time,xy){
@@ -759,21 +832,21 @@ function playCrash(out,time,xy){
    SOUND DEFINITIONS — 16 cells = 16 steps = 16 sounds, fixed 1:1
    ===================================================================== */
 const SOUNDS = [
-  { name:"Kick I",      family:"kick",  color:"#ff5468", glyph:G.KICK_A,  fn:playKick,  cfg:{f0:130,f1:45,click:0.35} },
-  { name:"Kick II",     family:"kick",  color:"#ff5468", glyph:G.KICK_B,  fn:playKick,  cfg:{f0:170,f1:55,click:0.55,oscType:"triangle"} },
-  { name:"Snare I",     family:"snare", color:"#ffb627", glyph:G.SNARE_A, fn:playSnare, cfg:{tone:180,toneLevel:0.5,noiseLevel:0.8} },
-  { name:"Snare II",    family:"snare", color:"#ffb627", glyph:G.SNARE_B, fn:playSnare, cfg:{tone:220,toneLevel:0.22,noiseLevel:1.0} },
+  { name:"Kick I",      family:"kick",  color:"#ff5468", glyph:G.KICK_A,  fn:playKick,  cfg:{f0:130,f1:45,click:0.35}, melodic:{base:130,range:60} },
+  { name:"Kick II",     family:"kick",  color:"#ff5468", glyph:G.KICK_B,  fn:playKick,  cfg:{f0:170,f1:55,click:0.55,oscType:"triangle"}, melodic:{base:170,range:60} },
+  { name:"Snare I",     family:"snare", color:"#ffb627", glyph:G.SNARE_A, fn:playSnare, cfg:{tone:180,toneLevel:0.5,noiseLevel:0.8}, melodic:{base:180,range:80} },
+  { name:"Snare II",    family:"snare", color:"#ffb627", glyph:G.SNARE_B, fn:playSnare, cfg:{tone:220,toneLevel:0.22,noiseLevel:1.0}, melodic:{base:220,range:80} },
   { name:"Hat Cl. I",   family:"hat",   color:"#2ee6a6", glyph:G.HATC_A,  fn:playHat,   cfg:{baseDur:0.03,durRange:0.05,cutBase:6000,cutRange:3000,level:0.5,metal:0.05,freqs:[3200,4500]} },
   { name:"Hat Cl. II",  family:"hat",   color:"#2ee6a6", glyph:G.HATC_B,  fn:playHat,   cfg:{baseDur:0.02,durRange:0.04,cutBase:7000,cutRange:4000,level:0.45,metal:0.08,freqs:[3800,5200,6100]} },
   { name:"Hat Op. I",   family:"hat",   color:"#20c6ff", glyph:G.HATO_A,  fn:playHat,   cfg:{baseDur:0.2,durRange:0.4,cutBase:5000,cutRange:3000,level:0.42,metal:0.06,freqs:[3200,4500,6000]} },
   { name:"Hat Op. II",  family:"hat",   color:"#20c6ff", glyph:G.HATO_B,  fn:playHat,   cfg:{baseDur:0.25,durRange:0.45,cutBase:4500,cutRange:3500,level:0.38,metal:0.1,freqs:[2800,4000,5600,7200]} },
-  { name:"Tom Lo I",    family:"tom",   color:"#9d6dff", glyph:G.TOML_A,  fn:playTom,   cfg:{f0:100,fxRange:40} },
-  { name:"Tom Lo II",   family:"tom",   color:"#9d6dff", glyph:G.TOML_B,  fn:playTom,   cfg:{f0:120,fxRange:50} },
-  { name:"Tom Hi I",    family:"tom",   color:"#c99bff", glyph:G.TOMH_A,  fn:playTom,   cfg:{f0:200,fxRange:60} },
-  { name:"Tom Hi II",   family:"tom",   color:"#c99bff", glyph:G.TOMH_B,  fn:playTom,   cfg:{f0:230,fxRange:70} },
-  { name:"Wave Gen",    family:"wave",  color:"#3ec6ff", glyph:G.WAVE,    fn:playWaveGen, cfg:{} },
-  { name:"Noise Gen",   family:"noise", color:"#8f9bb3", glyph:G.NOISE,   fn:playNoiseGen, cfg:{} },
-  { name:"Ride",        family:"ride",  color:"#ffd447", glyph:G.RIDE,    fn:playRide,  cfg:{} },
+  { name:"Tom Lo I",    family:"tom",   color:"#9d6dff", glyph:G.TOML_A,  fn:playTom,   cfg:{f0:100,fxRange:40}, melodic:{base:100,range:40} },
+  { name:"Tom Lo II",   family:"tom",   color:"#9d6dff", glyph:G.TOML_B,  fn:playTom,   cfg:{f0:120,fxRange:50}, melodic:{base:120,range:50} },
+  { name:"Tom Hi I",    family:"tom",   color:"#c99bff", glyph:G.TOMH_A,  fn:playTom,   cfg:{f0:200,fxRange:60}, melodic:{base:200,range:60} },
+  { name:"Tom Hi II",   family:"tom",   color:"#c99bff", glyph:G.TOMH_B,  fn:playTom,   cfg:{f0:230,fxRange:70}, melodic:{base:230,range:70} },
+  { name:"Wave Gen",    family:"wave",  color:"#3ec6ff", glyph:G.WAVE,    fn:playWaveGen, cfg:{}, melodic:{base:110,range:680} },
+  { name:"Bass Synth",  family:"bass",  color:"#7b5cff", glyph:G.BASS,    fn:playBassSynth, cfg:{}, melodic:{base:40,range:160} },
+  { name:"Woodblock",   family:"wood",  color:"#c98a4f", glyph:G.WOOD,    fn:playWoodblock, cfg:{}, melodic:{base:500,range:1500} },
   { name:"Crash",       family:"crash", color:"#ffe98a", glyph:G.CRASH,   fn:playCrash, cfg:{} }
 ];
 
@@ -919,7 +992,7 @@ function fxRiser(time,xy){
   const osc = ctx.createOscillator(); osc.type = "sawtooth";
   const filt = ctx.createBiquadFilter(); filt.type = "bandpass"; filt.Q.value = 4;
   const g = ctx.createGain();
-  const f0 = quantizeToScale(80 + xy.x*200);
+  const f0 = xToScaleFreq(xy.x, 80, 200);
   const f1 = quantizeToScale(f0 + 2000 + xy.x*4000);
   osc.frequency.setValueAtTime(f0,time);
   osc.frequency.exponentialRampToValueAtTime(f1,time+dur);
@@ -936,7 +1009,7 @@ function fxImpact(time,xy){
   const voice = fxVoice();
   const osc = ctx.createOscillator(); osc.type = "sine";
   const g = ctx.createGain();
-  const f0 = quantizeToScale(60 + xy.x*80);
+  const f0 = xToScaleFreq(xy.x, 60, 80);
   osc.frequency.setValueAtTime(f0,time);
   osc.frequency.exponentialRampToValueAtTime(kt(25),time+dur*0.9);
   g.gain.setValueAtTime(0.0001,time);
@@ -1030,8 +1103,8 @@ const FXDEFS = [
   { name:"Tremolo",     color:"#4fffe1", glyph:FXG.TREMOLO,   fn:fxTremolo },
   { name:"Auto Pan",    color:"#ffe14f", glyph:FXG.AUTOPAN,   fn:fxAutoPan },
   { name:"Ring Mod",    color:"#ff4f9d", glyph:FXG.RINGMOD,   fn:fxRingMod },
-  { name:"Riser",       color:"#4fc9ff", glyph:FXG.RISER,     fn:fxRiser },
-  { name:"Impact",      color:"#ff6b4f", glyph:FXG.IMPACT,    fn:fxImpact },
+  { name:"Riser",       color:"#4fc9ff", glyph:FXG.RISER,     fn:fxRiser, melodic:{base:80,range:200} },
+  { name:"Impact",      color:"#ff6b4f", glyph:FXG.IMPACT,    fn:fxImpact, melodic:{base:60,range:80} },
   { name:"Crackle",     color:"#c9ff4f", glyph:FXG.CRACKLE,   fn:fxCrackle },
   { name:"Noise Wash",  color:"#9fb0c9", glyph:FXG.NOISEWASH, fn:fxNoiseWash },
   { name:"Stutter",     color:"#ff4fc9", glyph:FXG.STUTTER,   fn:fxStutter },
@@ -1063,18 +1136,21 @@ const fxPatterns = FXDEFS.map(()=> new Array(16).fill(false));
 const fxParams   = FXDEFS.map(()=> new Array(16).fill(null));
 const fxDefault  = FXDEFS.map(()=> ({ x:0.5, y:0.5 }));
 
-/* ---- Pattern slots (song chaining) -------------------------------
-   The top 8 grid cells become save/recall slots when PAT mode is on.
-   Each slot is a full snapshot of both banks' patterns + automation.
+/* ---- Pattern slots + genre presets (song chaining) ---------------
+   The top 8 grid cells become user save/recall slots when PAT mode is
+   on. Each slot is a full snapshot of both banks' patterns + automation.
    Long-press a slot to save the current live state into it.
-   Short-press a slot to recall it -- immediately if stopped, or
+   The bottom 8 cells are read-only built-in genre presets (long-press
+   does nothing on these -- they can't be overwritten).
+   Short-press either row to load it -- immediately if stopped, or
    queued to swap in at the next bar boundary if playing, so you can
    chain patterns together into a song while the beat keeps rolling.
-   The bottom 8 cells are reserved for a future feature and are inert.
+   liveSource / queuedSource track which of the two pools (a saved
+   slot or a built-in preset) the current/pending live state matches.
    ------------------------------------------------------------------- */
 const patternSlots = new Array(8).fill(null);
-let activeSlot = null;
-let queuedSlot = null;
+let liveSource = null;   // { type:'slot'|'preset', index } | null
+let queuedSource = null; // { type:'slot'|'preset', index } | null
 
 function snapshotState(){
   return {
@@ -1156,10 +1232,8 @@ function advanceNote(){
 
 function schedulerLoop(){
   while(nextNoteTime < ctx.currentTime + scheduleAheadTime){
-    if(current16th === 0 && queuedSlot !== null){
-      applySnapshot(patternSlots[queuedSlot]);
-      activeSlot = queuedSlot;
-      queuedSlot = null;
+    if(current16th === 0 && queuedSource !== null){
+      applyPatternSource(queuedSource.type, queuedSource.index);
       if(patternMode) renderPatternGrid();
       else renderGridStates();
     }
@@ -1242,7 +1316,10 @@ function attachCellHandlers(cell, i){
     pressTimer = setTimeout(()=>{
       longFired = true;
       if(patternMode){
+        // only the top row (user save slots) can be saved onto with a
+        // long-press -- the bottom row (genre presets) is read-only
         if(i < 8){ savePatternSlot(i); pulseCell(cell); }
+        else { pulseCell(cell); }
       } else {
         armCell(i);
         previewArmedLane(i);
@@ -1259,6 +1336,7 @@ function attachCellHandlers(cell, i){
     if(!longFired && !moved){
       if(patternMode){
         if(i < 8) selectPatternSlot(i);
+        else selectPreset(i-8);
       } else {
         // short press: toggle THIS step (position i) of the currently
         // ARMED lane's pattern — not the lane that lives in cell i
@@ -1321,6 +1399,44 @@ function armCell(i){
   renderGridStates();
   updateArmedStrip();
   updatePadThumbFromArmed();
+  renderNoteGuides();
+}
+
+// draw the piano-roll note grid on the XY pad for the currently armed
+// lane, if it has melodic (XY-quantized pitch) content -- so the user
+// can see exactly which x-position lands on which note
+function renderNoteGuides(){
+  const container = document.getElementById("padNoteLines");
+  const def = defsFor(bank)[armedFor(bank)];
+  if(patternMode || !def || !def.melodic){
+    container.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
+  container.style.display = "block";
+  container.innerHTML = "";
+  const zones = computeNoteZones(def.melodic.base, def.melodic.range);
+  zones.forEach(zone=>{
+    const pc = ((zone.midi%12)+12)%12;
+    const isRoot = pc === currentKey;
+
+    const line = document.createElement("div");
+    line.className = "note-line" + (isRoot ? " note-line-root" : "");
+    line.style.left = (zone.startX*100) + "%";
+    container.appendChild(line);
+
+    const label = document.createElement("div");
+    label.className = "note-label" + (isRoot ? " note-label-root" : "");
+    label.style.left = (zone.startX*100) + "%";
+    label.style.width = ((zone.endX-zone.startX)*100) + "%";
+    // skip the text on very narrow zones (dense wide-range sounds like
+    // Wave Gen) so labels don't overlap illegibly -- the tick line
+    // still marks the boundary either way
+    if((zone.endX - zone.startX) >= 0.035){
+      label.textContent = noteNameForMidi(zone.midi);
+    }
+    container.appendChild(label);
+  });
 }
 
 // refresh every cell's on/off + motion-dot display to reflect the
@@ -1364,24 +1480,69 @@ function rebuildGridForBank(){
 }
 
 /* ---- Pattern-mode grid: top 8 cells = save/recall slots, bottom 8
-   reserved for a future feature ---------------------------------- */
+   built-in genre presets on the bottom row ------------------------ */
 const PAT_ACCENT = "#ffd447";
+
+// ---- Genre presets: sparse step lists per drum/fx lane, expanded into
+// full snapshot objects (same shape applySnapshot expects) once at load.
+const PRESET_DEFS = [
+  { name:"Disco",    short:"DISCO",  color:"#ff6ec7",
+    drum:{ 0:[0,4,8,12], 2:[4,12], 4:[0,2,4,6,8,10,12,14], 6:[2,6,10,14], 13:[0,3,7,8,11,15] } },
+  { name:"EDM",      short:"EDM",    color:"#4fc9ff",
+    drum:{ 0:[0,4,8,12], 2:[4,12], 4:[1,3,5,7,9,11,13,15], 6:[2,6,10,14], 13:[0,4,8,12], 15:[0] } },
+  { name:"Techno",   short:"TECHNO", color:"#9fb0c9",
+    drum:{ 0:[0,4,8,12], 4:[2,6,10,14], 6:[14], 2:[12], 14:[6,14] } },
+  { name:"Industrial", short:"INDUST", color:"#ff8a4f",
+    drum:{ 0:[0,3,6,8,11,14], 1:[10], 2:[4,12], 4:[0,2,4,6,8,10,12,14], 15:[0] },
+    fx:{ 3:[8], 2:[0] } },
+  { name:"Metal",    short:"METAL",  color:"#ff4f4f",
+    drum:{ 0:[0,2,4,6,8,10,12,14], 1:[1,3,5,7,9,11,13,15], 2:[4,12], 15:[0] } },
+  { name:"Cumbia",   short:"CUMBIA", color:"#ffd447",
+    drum:{ 8:[0,3,6,8,11,14], 2:[4,12], 4:[0,2,4,6,8,10,12,14] } },
+  { name:"Afrobeat", short:"AFRO",   color:"#c9a24f",
+    drum:{ 0:[0,6,10], 8:[3,8,13], 4:[0,2,4,6,8,10,12,14], 14:[2,7,11,14] } },
+  { name:"Jungle",   short:"JUNGLE", color:"#4fff9d",
+    drum:{ 0:[0,10], 1:[6], 2:[4,7,12,15], 4:[0,2,4,6,8,10,12,14], 5:[1,3,5,7,9,11,13,15] },
+    fx:{ 15:[12] } }
+];
+function buildPresetSnapshot(def){
+  const pat = Array.from({length:16}, ()=> new Array(16).fill(false));
+  const fxPat = Array.from({length:16}, ()=> new Array(16).fill(false));
+  Object.entries(def.drum || {}).forEach(([idx,steps])=> steps.forEach(s=> pat[idx][s] = true));
+  Object.entries(def.fx || {}).forEach(([idx,steps])=> steps.forEach(s=> fxPat[idx][s] = true));
+  return {
+    patterns: pat,
+    params: pat.map(r=> r.map(()=> null)),
+    soundDefault: SOUNDS.map(()=> ({x:0.5,y:0.5})),
+    fxPatterns: fxPat,
+    fxParams: fxPat.map(r=> r.map(()=> null)),
+    fxDefault: FXDEFS.map(()=> ({x:0.5,y:0.5}))
+  };
+}
+const PRESET_SNAPSHOTS = PRESET_DEFS.map(buildPresetSnapshot);
+
+function applyPatternSource(type, index){
+  const snap = type === "slot" ? patternSlots[index] : PRESET_SNAPSHOTS[index];
+  applySnapshot(snap);
+  liveSource = { type, index };
+  queuedSource = null;
+}
 
 function savePatternSlot(i){
   patternSlots[i] = snapshotState();
-  activeSlot = i;
-  queuedSlot = null;
+  liveSource = { type:"slot", index:i };
+  queuedSource = null;
   renderPatternGrid();
 }
 function selectPatternSlot(i){
   if(!patternSlots[i]){ pulseCell(cells[i]); return; }
-  if(playing){
-    queuedSlot = i;
-  } else {
-    applySnapshot(patternSlots[i]);
-    activeSlot = i;
-    queuedSlot = null;
-  }
+  if(playing) queuedSource = { type:"slot", index:i };
+  else applyPatternSource("slot", i);
+  renderPatternGrid();
+}
+function selectPreset(i){
+  if(playing) queuedSource = { type:"preset", index:i };
+  else applyPatternSource("preset", i);
   renderPatternGrid();
 }
 
@@ -1392,39 +1553,52 @@ function rebuildGridForPattern(){
   }
   renderPatternGrid();
   updatePatternStrip();
+  renderNoteGuides();
 }
+
+function isLive(type, index){ return !!liveSource && liveSource.type===type && liveSource.index===index; }
+function isQueued(type, index){ return !!queuedSource && queuedSource.type===type && queuedSource.index===index; }
 
 function renderPatternGrid(){
   for(let i=0;i<8;i++){
     const cell = cells[i];
     cell.classList.remove("cell-disabled");
+    cell.style.setProperty("--accent", PAT_ACCENT);
     const filled = !!patternSlots[i];
     drawGlyph(cellCanvases[i], filled ? PATG : PATG_EMPTY, PAT_ACCENT);
-    cellFams[i].textContent = i===activeSlot ? "ACTIVE" : (i===queuedSlot ? "QUEUED" : (filled ? "SAVED" : "EMPTY"));
+    cellFams[i].textContent = isLive("slot",i) ? "ACTIVE" : (isQueued("slot",i) ? "QUEUED" : (filled ? "SAVED" : "EMPTY"));
     cell.classList.toggle("is-on", filled);
-    cell.classList.toggle("is-armed", i===activeSlot);
-    cell.classList.toggle("is-queued", i===queuedSlot);
+    cell.classList.toggle("is-armed", isLive("slot",i));
+    cell.classList.toggle("is-queued", isQueued("slot",i));
     cell.classList.remove("has-motion", "is-playhead");
   }
-  for(let i=8;i<16;i++){
-    const cell = cells[i];
-    drawGlyph(cellCanvases[i], PATG_EMPTY, "#5a5270");
-    cellFams[i].textContent = "SOON";
-    cell.classList.remove("is-on","is-armed","is-queued","has-motion","is-playhead");
-    cell.classList.add("cell-disabled");
+  for(let i=0;i<8;i++){
+    const cell = cells[i+8];
+    const def = PRESET_DEFS[i];
+    cell.classList.remove("cell-disabled");
+    cell.style.setProperty("--accent", def.color);
+    drawGlyph(cellCanvases[i+8], PATG, def.color);
+    cellFams[i+8].textContent = isLive("preset",i) ? "ACTIVE" : (isQueued("preset",i) ? "QUEUED" : def.short);
+    cell.classList.toggle("is-on", true);
+    cell.classList.toggle("is-armed", isLive("preset",i));
+    cell.classList.toggle("is-queued", isQueued("preset",i));
+    cell.classList.remove("has-motion", "is-playhead");
   }
   updatePatternStrip();
 }
 
 function updatePatternStrip(){
   document.getElementById("armedSwatch").style.background = PAT_ACCENT;
-  document.getElementById("armedName").textContent = "HOLD TO SAVE \u00b7 TAP TO LOAD";
+  document.getElementById("armedName").textContent = "HOLD TOP ROW TO SAVE \u00b7 TAP TO LOAD";
   document.getElementById("bankBadge").textContent = "PAT";
   document.getElementById("labelTone").textContent = "ACTIVE";
   document.getElementById("labelDecay").textContent = "QUEUED";
-  document.getElementById("valTone").textContent = activeSlot!==null ? (activeSlot+1) : "\u2014";
-  document.getElementById("valDecay").textContent = queuedSlot!==null ? (queuedSlot+1) : "\u2014";
+  document.getElementById("valTone").textContent = liveSource ? sourceLabel(liveSource) : "\u2014";
+  document.getElementById("valDecay").textContent = queuedSource ? sourceLabel(queuedSource) : "\u2014";
   document.getElementById("padThumb").style.setProperty("--accent-color", PAT_ACCENT);
+}
+function sourceLabel(src){
+  return src.type === "slot" ? ("S"+(src.index+1)) : PRESET_DEFS[src.index].short;
 }
 
 /* =====================================================================
@@ -1548,8 +1722,8 @@ function clearAllPatterns(){
   armedDrum = 0;
   armedFx = 0;
   bank = "drum";
-  activeSlot = null;
-  queuedSlot = null;
+  liveSource = null;
+  queuedSource = null;
   if(patternMode){
     patternMode = false;
     patBtn.classList.remove("active");
