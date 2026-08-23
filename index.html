@@ -277,7 +277,29 @@ input[type=range]::-webkit-slider-thumb{
   flex:1; min-height:0;
   padding:2px 2px 2px;
   display:flex;
+  position:relative;
 }
+.random-wrap{
+  position:absolute; inset:2px;
+  display:flex; flex-direction:row; gap:5px;
+}
+.random-btn{
+  flex:1;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:2px; text-align:center; padding:3px;
+  background:linear-gradient(180deg,var(--bg-2),var(--bg-1));
+  border:3px solid var(--gold); border-radius:10px;
+  color:var(--gold);
+  font-family:'Press Start 2P',monospace; font-size:7.5px; letter-spacing:0.3px; line-height:1.5;
+  box-shadow:
+    inset 0 6px 0 rgba(255,255,255,0.08),
+    inset 0 -8px 14px rgba(0,0,0,0.4),
+    0 6px 0 var(--line);
+}
+.random-btn:active{ transform:translateY(3px); }
+.random-btn.secondary{ border-color:#4fc9ff; color:#4fc9ff; }
+.random-btn.tertiary{ border-color:#c86bff; color:#c86bff; }
+.random-btn.danger{ border-color:var(--danger); color:var(--danger); }
 #xyPad{
   position:relative; flex:1;
   background:
@@ -411,6 +433,24 @@ input[type=range]::-webkit-slider-thumb{
         <div class="axis-label x-hi">BRIGHT</div>
         <div class="rec-flag" id="recFlag"><span class="dot"></span>REC MOTION</div>
         <div id="padThumb"></div>
+      </div>
+      <div class="random-wrap hidden" id="randomWrap">
+        <button class="random-btn" id="randomizeAllBtn">
+          <span>RANDOMIZE</span>
+          <span>ALL</span>
+        </button>
+        <button class="random-btn secondary" id="randomizeExistingBtn">
+          <span>RANDOMIZE</span>
+          <span>EXISTING</span>
+        </button>
+        <button class="random-btn tertiary" id="randomizeProgressionBtn">
+          <span>EVOLVE</span>
+          <span>LOOP</span>
+        </button>
+        <button class="random-btn danger" id="clearFxBtn">
+          <span>CLEAR</span>
+          <span>FX</span>
+        </button>
       </div>
     </div>
 
@@ -684,7 +724,8 @@ function initAudio(){
 
 /* ---- per-family synth voices. xy = {x,y} in 0..1 ---- */
 function playKick(out,time,xy,cfg){
-  const dur = 0.14 + xy.y*0.5;
+  const durRange = cfg.durRange !== undefined ? cfg.durRange : 0.5;
+  const dur = 0.14 + xy.y*durRange;
   const f0 = xToScaleFreq(xy.x, cfg.f0, 60);
   const f1 = kt(cfg.f1);
   const osc = ctx.createOscillator(); osc.type = cfg.oscType || "sine";
@@ -833,7 +874,7 @@ function playCrash(out,time,xy){
    ===================================================================== */
 const SOUNDS = [
   { name:"Kick I",      family:"kick",  color:"#ff5468", glyph:G.KICK_A,  fn:playKick,  cfg:{f0:130,f1:45,click:0.35}, melodic:{base:130,range:60} },
-  { name:"Kick II",     family:"kick",  color:"#ff5468", glyph:G.KICK_B,  fn:playKick,  cfg:{f0:170,f1:55,click:0.55,oscType:"triangle"}, melodic:{base:170,range:60} },
+  { name:"Kick II",     family:"kick",  color:"#ff5468", glyph:G.KICK_B,  fn:playKick,  cfg:{f0:150,f1:40,click:0.45,oscType:"triangle",durRange:1.3}, melodic:{base:150,range:60} },
   { name:"Snare I",     family:"snare", color:"#ffb627", glyph:G.SNARE_A, fn:playSnare, cfg:{tone:180,toneLevel:0.5,noiseLevel:0.8}, melodic:{base:180,range:80} },
   { name:"Snare II",    family:"snare", color:"#ffb627", glyph:G.SNARE_B, fn:playSnare, cfg:{tone:220,toneLevel:0.22,noiseLevel:1.0}, melodic:{base:220,range:80} },
   { name:"Hat Cl. I",   family:"hat",   color:"#2ee6a6", glyph:G.HATC_A,  fn:playHat,   cfg:{baseDur:0.03,durRange:0.05,cutBase:6000,cutRange:3000,level:0.5,metal:0.05,freqs:[3200,4500]} },
@@ -850,6 +891,20 @@ const SOUNDS = [
   { name:"Crash",       family:"crash", color:"#ffe98a", glyph:G.CRASH,   fn:playCrash, cfg:{} }
 ];
 
+// Explicitly disconnect a one-shot voice once its sound has fully
+// finished. WebKit/iOS does not reliably tear down AudioNodes just
+// because their source has stopped playing -- without this, every
+// triggered hit's oscillators/buffers/gains/filters pile up for the
+// life of the page, and the audio thread eventually chokes on the
+// ever-growing graph (audible as stuttering after a minute or two).
+// Scheduled relative to the hit's own playback time (not "now"), since
+// effects like Repeater can schedule voices several seconds ahead in
+// a single synchronous call.
+function scheduleVoiceCleanup(voice, time, margin){
+  const ms = Math.max(0, (time - ctx.currentTime) + margin) * 1000;
+  setTimeout(()=>{ try{ voice.disconnect(); }catch(e){} }, ms);
+}
+
 function trigger(idx, time, xy){
   const def = SOUNDS[idx];
   const voice = ctx.createGain();
@@ -857,6 +912,7 @@ function trigger(idx, time, xy){
   voice.connect(masterDry);
   voice.connect(masterWet);
   def.fn(voice, time, xy, def.cfg);
+  scheduleVoiceCleanup(voice, time, 3.0);
 }
 
 /* =====================================================================
@@ -869,11 +925,12 @@ function scheduleAt(time, fn){
   const ms = Math.max(0, (time - ctx.currentTime) * 1000);
   setTimeout(fn, ms);
 }
-function fxVoice(){
+function fxVoice(time){
   const v = ctx.createGain();
   v.gain.value = 1;
   v.connect(masterDry);
   v.connect(masterWet);
+  scheduleVoiceCleanup(v, time, 3.0);
   return v;
 }
 function crushCurve(steps){
@@ -883,7 +940,7 @@ function crushCurve(steps){
 }
 function distCurve(amount){
   const n = 1024; const c = new Float32Array(n);
-  for(let i=0;i<n;i++){ const x=(i/(n-1))*2-1; c[i] = 0.375 * (Math.tanh(x*amount)/Math.tanh(amount)); }
+  for(let i=0;i<n;i++){ const x=(i/(n-1))*2-1; c[i] = 0.28 * (Math.tanh(x*amount)/Math.tanh(amount)); }
   return c;
 }
 
@@ -905,14 +962,34 @@ function fxFilterLP(time,xy){
   fxFilter.Q.setValueAtTime(q, time+hold);
   fxFilter.Q.linearRampToValueAtTime(0.7, time+hold+release);
 }
-function fxFilterSweepUp(time,xy){
-  const dur = 0.12 + xy.y*0.9;
-  const target = 400 + xy.x*6000;
-  scheduleAt(time, ()=>{ fxFilter.type = "highpass"; });
-  fxFilter.frequency.cancelScheduledValues(time);
-  fxFilter.frequency.setValueAtTime(20,time);
-  fxFilter.frequency.exponentialRampToValueAtTime(Math.max(target,80), time+dur*0.5);
-  fxFilter.frequency.exponentialRampToValueAtTime(20, time+dur);
+function fxFlangerSweep(time,xy){
+  // classic flange: a very short delay (1-10ms) swept back and forth
+  // with feedback, creating a metallic, swooshing comb-filter texture --
+  // audibly distinct from a plain cutoff sweep since it carves a moving
+  // series of notches into the sound rather than just rolling frequencies
+  // off above or below one point.
+  const dur = 0.2 + xy.y*1.4;
+  const depth = 0.0015 + xy.x*0.008;
+  const rate = 0.6 + xy.x*3.2;
+  const feedbackAmt = 0.45 + xy.x*0.3;
+
+  fxDelayFeedback.gain.cancelScheduledValues(time);
+  fxDelayFeedback.gain.setValueAtTime(feedbackAmt, time);
+  fxDelayFeedback.gain.linearRampToValueAtTime(0.35, time+dur);
+
+  fxDelayWet.gain.cancelScheduledValues(time);
+  fxDelayWet.gain.setValueAtTime(0.0001, time);
+  fxDelayWet.gain.linearRampToValueAtTime(0.55, time+0.03);
+  fxDelayWet.gain.exponentialRampToValueAtTime(0.0001, time+dur);
+
+  const n = 64;
+  const curve = new Float32Array(n);
+  for(let i=0; i<n; i++){
+    const t = i/(n-1);
+    curve[i] = 0.0015 + depth*(0.5+0.5*Math.sin(t*dur*rate*2*Math.PI));
+  }
+  fxDelay.delayTime.cancelScheduledValues(time);
+  fxDelay.delayTime.setValueCurveAtTime(curve, time, dur);
 }
 function fxBitcrush(time,xy){
   const dur = 0.08 + xy.y*0.5;
@@ -931,6 +1008,7 @@ function fxDistortion(time,xy){
 function fxDelayThrow(time,xy){
   const dur = 0.15 + xy.y*1.0;
   const dtime = 0.06 + xy.x*0.42;
+  fxDelay.delayTime.cancelScheduledValues(time);
   fxDelay.delayTime.setValueAtTime(dtime,time);
   fxDelayWet.gain.cancelScheduledValues(time);
   fxDelayWet.gain.setValueAtTime(0.0001,time);
@@ -986,27 +1064,78 @@ function fxRingMod(time,xy){
   fxGate.gain.cancelScheduledValues(time);
   fxGate.gain.setValueCurveAtTime(curve,time,dur);
 }
-function fxRiser(time,xy){
-  const dur = 0.3 + xy.y*1.6;
-  const voice = fxVoice();
-  const osc = ctx.createOscillator(); osc.type = "sawtooth";
-  const filt = ctx.createBiquadFilter(); filt.type = "bandpass"; filt.Q.value = 4;
-  const g = ctx.createGain();
-  const f0 = xToScaleFreq(xy.x, 80, 200);
-  const f1 = quantizeToScale(f0 + 2000 + xy.x*4000);
-  osc.frequency.setValueAtTime(f0,time);
-  osc.frequency.exponentialRampToValueAtTime(f1,time+dur);
-  filt.frequency.setValueAtTime(f0*2,time);
-  filt.frequency.exponentialRampToValueAtTime(f1*1.2,time+dur);
-  g.gain.setValueAtTime(0.0001,time);
-  g.gain.exponentialRampToValueAtTime(0.4,time+dur*0.8);
-  g.gain.exponentialRampToValueAtTime(0.0001,time+dur+0.05);
-  osc.connect(filt); filt.connect(g); g.connect(voice);
-  osc.start(time); osc.stop(time+dur+0.1);
+let _riserFxIndex = null;
+let riserStreak = 0;
+function fxFilterRiser(time,xy,stepIdx){
+  // Builds continuously across a run of CONSECUTIVE steps that have
+  // Filter Riser active -- each step in the run pushes the cutoff and
+  // resonance a bit higher than the last, so a longer unbroken run
+  // rises further.
+  //
+  // Every single trigger ALWAYS schedules its own release back to
+  // fully open shortly after it plays, as if it might be the last step
+  // of the run. If another consecutive step fires before that release
+  // time arrives, that next trigger's cancelScheduledValues() call
+  // wipes the pending release out and schedules a new (higher) rise +
+  // its own tentative release instead. Only whichever trigger truly
+  // turns out to be last actually gets to release. This self-heals
+  // correctly even if the pattern is edited or cleared mid-stream --
+  // there's no scenario where the filter can get stuck engaged with no
+  // future trigger left to release it, since every hit already carries
+  // its own fallback release.
+  const endFreq = 300 + xy.x*7000;
+  const endQ = 2 + xy.x*10;
+
+  if(stepIdx == null){
+    // standalone preview tap (no pattern context) -- simple bounded rise+release
+    const dur = 0.3 + xy.y*1.8;
+    scheduleAt(time, ()=>{ fxFilter.type = "bandpass"; });
+    fxFilter.frequency.cancelScheduledValues(time);
+    fxFilter.Q.cancelScheduledValues(time);
+    fxFilter.frequency.setValueAtTime(200, time);
+    fxFilter.frequency.exponentialRampToValueAtTime(Math.max(endFreq,220), time+dur);
+    fxFilter.frequency.exponentialRampToValueAtTime(20000, time+dur+0.3);
+    fxFilter.Q.setValueAtTime(0.7, time);
+    fxFilter.Q.linearRampToValueAtTime(endQ, time+dur);
+    fxFilter.Q.linearRampToValueAtTime(0.7, time+dur+0.3);
+    return;
+  }
+
+  if(_riserFxIndex === null) _riserFxIndex = FXDEFS.findIndex(d => d.fn === fxFilterRiser);
+  const lane = fxPatterns[_riserFxIndex];
+  const prevActive = !!(lane && lane[(stepIdx+15)%16]);
+  const stepDur = secondsPerStep();
+
+  scheduleAt(time, ()=>{ fxFilter.type = "bandpass"; });
+  fxFilter.frequency.cancelScheduledValues(time);
+  fxFilter.Q.cancelScheduledValues(time);
+
+  if(!prevActive){
+    // start of a fresh run -- snap to the defined starting point
+    riserStreak = 0;
+    fxFilter.frequency.setValueAtTime(200, time);
+    fxFilter.Q.setValueAtTime(0.7, time);
+  } else {
+    // continuing an existing run -- hold from wherever it currently is
+    fxFilter.frequency.setValueAtTime(fxFilter.frequency.value, time);
+    fxFilter.Q.setValueAtTime(fxFilter.Q.value, time);
+  }
+  riserStreak++;
+
+  const maxSteps = 2 + Math.round(xy.y*14); // Y: how many consecutive steps to reach full intensity
+  const progress = Math.min(1, riserStreak/maxSteps);
+  const targetFreq = 200 + progress*(endFreq-200);
+  const targetQ = 0.7 + progress*(endQ-0.7);
+  fxFilter.frequency.exponentialRampToValueAtTime(Math.max(targetFreq,60), time+stepDur*0.9);
+  fxFilter.Q.linearRampToValueAtTime(targetQ, time+stepDur*0.9);
+
+  // tentative release -- overridden by the next trigger if the run continues
+  fxFilter.frequency.exponentialRampToValueAtTime(20000, time+stepDur+0.3);
+  fxFilter.Q.linearRampToValueAtTime(0.7, time+stepDur+0.3);
 }
 function fxImpact(time,xy){
   const dur = 0.3 + xy.y*1.0;
-  const voice = fxVoice();
+  const voice = fxVoice(time);
   const osc = ctx.createOscillator(); osc.type = "sine";
   const g = ctx.createGain();
   const f0 = xToScaleFreq(xy.x, 60, 80);
@@ -1021,7 +1150,7 @@ function fxImpact(time,xy){
 function fxCrackle(time,xy){
   const dur = 0.2 + xy.y*0.8;
   const density = 8 + xy.x*40;
-  const voice = fxVoice();
+  const voice = fxVoice(time);
   const hits = Math.floor(dur*density);
   for(let i=0;i<hits;i++){
     const t = time + Math.random()*dur;
@@ -1036,7 +1165,7 @@ function fxCrackle(time,xy){
 }
 function fxNoiseWash(time,xy){
   const dur = 0.3 + xy.y*1.4;
-  const voice = fxVoice();
+  const voice = fxVoice(time);
   const src = ctx.createBufferSource(); src.buffer = noiseBuffer(); src.loop = true;
   const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 400+xy.x*4000; bp.Q.value = 0.9;
   const g = ctx.createGain();
@@ -1049,7 +1178,7 @@ function fxNoiseWash(time,xy){
 function fxStutter(time,xy){
   const dur = 0.15 + xy.y*0.6;
   const rate = 6 + xy.x*20;
-  const voice = fxVoice();
+  const voice = fxVoice(time);
   const gap = 1/rate;
   const hits = Math.floor(dur/gap);
   for(let i=0;i<hits;i++){
@@ -1094,7 +1223,7 @@ function fxRepeater(time,xy,stepIdx){
 
 const FXDEFS = [
   { name:"Filter LP",   color:"#ff4fd8", glyph:FXG.FILT_DN,   fn:fxFilterLP, xLabel:"CUTOFF", yLabel:"RESO" },
-  { name:"Filter Up",   color:"#4fe1ff", glyph:FXG.FILT_UP,   fn:fxFilterSweepUp },
+  { name:"Flanger",     color:"#4fe1ff", glyph:FXG.FILT_UP,   fn:fxFlangerSweep, xLabel:"DEPTH", yLabel:"RATE" },
   { name:"Bitcrush",    color:"#ffab4f", glyph:FXG.BITCRUSH,  fn:fxBitcrush },
   { name:"Distortion",  color:"#ff4f4f", glyph:FXG.DISTORT,   fn:fxDistortion },
   { name:"Delay Throw", color:"#7b8cff", glyph:FXG.DELAY,     fn:fxDelayThrow },
@@ -1103,7 +1232,7 @@ const FXDEFS = [
   { name:"Tremolo",     color:"#4fffe1", glyph:FXG.TREMOLO,   fn:fxTremolo },
   { name:"Auto Pan",    color:"#ffe14f", glyph:FXG.AUTOPAN,   fn:fxAutoPan },
   { name:"Ring Mod",    color:"#ff4f9d", glyph:FXG.RINGMOD,   fn:fxRingMod },
-  { name:"Riser",       color:"#4fc9ff", glyph:FXG.RISER,     fn:fxRiser, melodic:{base:80,range:200} },
+  { name:"Filter Riser", color:"#4fc9ff", glyph:FXG.RISER,     fn:fxFilterRiser },
   { name:"Impact",      color:"#ff6b4f", glyph:FXG.IMPACT,    fn:fxImpact, melodic:{base:60,range:80} },
   { name:"Crackle",     color:"#c9ff4f", glyph:FXG.CRACKLE,   fn:fxCrackle },
   { name:"Noise Wash",  color:"#9fb0c9", glyph:FXG.NOISEWASH, fn:fxNoiseWash },
@@ -1485,38 +1614,78 @@ const PAT_ACCENT = "#ffd447";
 
 // ---- Genre presets: sparse step lists per drum/fx lane, expanded into
 // full snapshot objects (same shape applySnapshot expects) once at load.
+// Every preset carries a Bass Synth line and a Wave Gen lead alongside
+// the drums, plus two FX touches -- spread out so that, taken together,
+// the 8 presets exercise all 16 effects at least once. `defaults` sets
+// each lane's base XY knob position so the demo actually sounds shaped
+// rather than landing on neutral 50/50 for everything.
 const PRESET_DEFS = [
   { name:"Disco",    short:"DISCO",  color:"#ff6ec7",
-    drum:{ 0:[0,4,8,12], 2:[4,12], 4:[0,2,4,6,8,10,12,14], 6:[2,6,10,14], 13:[0,3,7,8,11,15] } },
+    drum:{ 0:[0,4,8,12], 2:[4,12], 4:[0,2,4,6,8,10,12,14], 6:[2,6,10,14],
+           13:[0,3,6,8,11,14], 12:[2,10] },
+    fx:{ 8:[6], 5:[12] }, // Auto Pan (spinning mirror ball), Reverb Swell (glossy room)
+    defaults:{ drum:{13:{x:0.35,y:0.4}, 12:{x:0.6,y:0.3}}, fx:{8:{x:0.5,y:0.6}, 5:{x:0.5,y:0.6}} } },
+
   { name:"EDM",      short:"EDM",    color:"#4fc9ff",
-    drum:{ 0:[0,4,8,12], 2:[4,12], 4:[1,3,5,7,9,11,13,15], 6:[2,6,10,14], 13:[0,4,8,12], 15:[0] } },
+    drum:{ 0:[0,4,8,12], 2:[4,12], 4:[1,3,5,7,9,11,13,15], 6:[2,6,10,14],
+           13:[0,4,8,12], 12:[6,14,15], 15:[0] },
+    fx:{ 10:[14], 6:[8] }, // Riser (pre-drop buildup), Gate Chop (sidechain pump)
+    defaults:{ drum:{13:{x:0.2,y:0.5}, 12:{x:0.75,y:0.55}}, fx:{10:{x:0.5,y:0.9}, 6:{x:0.6,y:0.3}} } },
+
   { name:"Techno",   short:"TECHNO", color:"#9fb0c9",
-    drum:{ 0:[0,4,8,12], 4:[2,6,10,14], 6:[14], 2:[12], 14:[6,14] } },
+    drum:{ 0:[0,4,8,12], 4:[2,6,10,14], 6:[14], 2:[12], 14:[6,14],
+           13:[0,3,6,10,14], 12:[8,12] },
+    fx:{ 0:[8], 4:[14] }, // Filter LP (hypnotic sweep), Delay Throw (dub echo)
+    defaults:{ drum:{13:{x:0.15,y:0.35}, 12:{x:0.5,y:0.2}}, fx:{0:{x:0.3,y:0.5}, 4:{x:0.4,y:0.5}} } },
+
   { name:"Industrial", short:"INDUST", color:"#ff8a4f",
-    drum:{ 0:[0,3,6,8,11,14], 1:[10], 2:[4,12], 4:[0,2,4,6,8,10,12,14], 15:[0] },
-    fx:{ 3:[8], 2:[0] } },
+    drum:{ 0:[0,3,6,8,11,14], 1:[10], 2:[4,12], 4:[0,2,4,6,8,10,12,14], 15:[0],
+           13:[0,3,5,8,11,13], 12:[2,9] },
+    fx:{ 3:[8], 9:[2] }, // Distortion (grit), Ring Mod (metallic clang)
+    defaults:{ drum:{13:{x:0.1,y:0.6}, 12:{x:0.85,y:0.15}}, fx:{3:{x:0.6,y:0.4}, 9:{x:0.6,y:0.4}} } },
+
   { name:"Metal",    short:"METAL",  color:"#ff4f4f",
-    drum:{ 0:[0,2,4,6,8,10,12,14], 1:[1,3,5,7,9,11,13,15], 2:[4,12], 15:[0] } },
+    drum:{ 0:[0,2,4,6,8,10,12,14], 1:[1,3,5,7,9,11,13,15], 2:[4,12], 15:[0],
+           13:[0,2,4,6,8,10,12,14], 12:[0,3,7,10,14] },
+    fx:{ 11:[0], 2:[12] }, // Impact (bomb hit), Bitcrush (crushed breakdown)
+    defaults:{ drum:{13:{x:0.25,y:0.15}, 12:{x:0.7,y:0.2}}, fx:{11:{x:0.5,y:0.6}, 2:{x:0.7,y:0.3}} } },
+
   { name:"Cumbia",   short:"CUMBIA", color:"#ffd447",
-    drum:{ 8:[0,3,6,8,11,14], 2:[4,12], 4:[0,2,4,6,8,10,12,14] } },
+    drum:{ 8:[0,3,6,8,11,14], 2:[4,12], 4:[0,2,4,6,8,10,12,14],
+           13:[0,3,6,8,11,14], 12:[2,5,9,12] },
+    fx:{ 7:[4], 13:[0] }, // Tremolo (güiro shimmer), Noise Wash (open-air texture)
+    defaults:{ drum:{13:{x:0.4,y:0.45}, 12:{x:0.55,y:0.35}}, fx:{7:{x:0.4,y:0.5}, 13:{x:0.3,y:0.6}} } },
+
   { name:"Afrobeat", short:"AFRO",   color:"#c9a24f",
-    drum:{ 0:[0,6,10], 8:[3,8,13], 4:[0,2,4,6,8,10,12,14], 14:[2,7,11,14] } },
+    drum:{ 0:[0,6,10], 8:[3,8,13], 4:[0,2,4,6,8,10,12,14], 14:[2,7,11,14],
+           13:[2,5,9,12], 12:[0,7,10,15] },
+    fx:{ 1:[8], 14:[14] }, // Filter Up (horn-like brightening), Stutter (percussion chatter)
+    defaults:{ drum:{13:{x:0.3,y:0.4}, 12:{x:0.6,y:0.3}}, fx:{1:{x:0.5,y:0.5}, 14:{x:0.6,y:0.3}} } },
+
   { name:"Jungle",   short:"JUNGLE", color:"#4fff9d",
-    drum:{ 0:[0,10], 1:[6], 2:[4,7,12,15], 4:[0,2,4,6,8,10,12,14], 5:[1,3,5,7,9,11,13,15] },
-    fx:{ 15:[12] } }
+    drum:{ 0:[0,10], 1:[6], 2:[4,7,12,15], 4:[0,2,4,6,8,10,12,14], 5:[1,3,5,7,9,11,13,15],
+           13:[0,3,6,9,12,14], 12:[5,11] },
+    fx:{ 15:[12], 12:[0] }, // Repeater (breakbeat roll), Crackle (vinyl texture)
+    defaults:{ drum:{13:{x:0.15,y:0.5}, 12:{x:0.65,y:0.15}}, fx:{15:{x:0.5,y:0.5}, 12:{x:0.4,y:0.4}} } }
 ];
 function buildPresetSnapshot(def){
   const pat = Array.from({length:16}, ()=> new Array(16).fill(false));
   const fxPat = Array.from({length:16}, ()=> new Array(16).fill(false));
   Object.entries(def.drum || {}).forEach(([idx,steps])=> steps.forEach(s=> pat[idx][s] = true));
   Object.entries(def.fx || {}).forEach(([idx,steps])=> steps.forEach(s=> fxPat[idx][s] = true));
+  const soundDef = SOUNDS.map(()=> ({x:0.5,y:0.5}));
+  const fxDef = FXDEFS.map(()=> ({x:0.5,y:0.5}));
+  if(def.defaults){
+    Object.entries(def.defaults.drum || {}).forEach(([idx,val])=> soundDef[idx] = {x:val.x, y:val.y});
+    Object.entries(def.defaults.fx || {}).forEach(([idx,val])=> fxDef[idx] = {x:val.x, y:val.y});
+  }
   return {
     patterns: pat,
     params: pat.map(r=> r.map(()=> null)),
-    soundDefault: SOUNDS.map(()=> ({x:0.5,y:0.5})),
+    soundDefault: soundDef,
     fxPatterns: fxPat,
     fxParams: fxPat.map(r=> r.map(()=> null)),
-    fxDefault: FXDEFS.map(()=> ({x:0.5,y:0.5}))
+    fxDefault: fxDef
   };
 }
 const PRESET_SNAPSHOTS = PRESET_DEFS.map(buildPresetSnapshot);
@@ -1703,6 +1872,39 @@ function drawLoop(){
    ===================================================================== */
 const playBtn = document.getElementById("playBtn");
 
+// Reset the persistent FX processing chain itself back to a neutral,
+// fully-bypassed state. This is separate from clearing FX pattern data:
+// the filter/gate/panner/shaper/delay are shared, always-in-the-signal-
+// path nodes, so whatever the last effect left them sitting at (a closed
+// filter, a hushed gate, a crushed waveshaper curve) keeps coloring
+// EVERYTHING that passes through -- including plain dry drums -- until
+// it's explicitly put back to neutral. Without this, clearing FX patterns
+// alone can leave the whole mix sounding quiet/muffled/off even though
+// no effect is scheduled to fire anymore.
+function resetFxChain(){
+  if(!ctx) return;
+  const now = ctx.currentTime;
+  fxFilter.type = "lowpass";
+  fxFilter.frequency.cancelScheduledValues(now);
+  fxFilter.frequency.setValueAtTime(20000, now);
+  fxFilter.Q.cancelScheduledValues(now);
+  fxFilter.Q.setValueAtTime(0.7, now);
+  fxShaper.curve = identityCurve;
+  fxPanner.pan.cancelScheduledValues(now);
+  fxPanner.pan.setValueAtTime(0, now);
+  fxGate.gain.cancelScheduledValues(now);
+  fxGate.gain.setValueAtTime(1, now);
+  fxDelay.delayTime.cancelScheduledValues(now);
+  fxDelay.delayTime.setValueAtTime(0.28, now);
+  fxDelayFeedback.gain.cancelScheduledValues(now);
+  fxDelayFeedback.gain.setValueAtTime(0.35, now);
+  fxDelayWet.gain.cancelScheduledValues(now);
+  fxDelayWet.gain.setValueAtTime(0, now);
+  masterWet.gain.cancelScheduledValues(now);
+  masterWet.gain.setValueAtTime(0, now);
+  riserStreak = 0;
+}
+
 function clearAllPatterns(){
   // total reset of live sequencer state -- everything except the
   // saved pattern slots, which are left untouched
@@ -1724,6 +1926,7 @@ function clearAllPatterns(){
   bank = "drum";
   liveSource = null;
   queuedSource = null;
+  resetFxChain();
   if(patternMode){
     patternMode = false;
     patBtn.classList.remove("active");
@@ -1801,15 +2004,265 @@ fxBtn.addEventListener("click", ()=>{
 });
 
 const patBtn = document.getElementById("patBtn");
+const randomWrap = document.getElementById("randomWrap");
+const randomizeAllBtn = document.getElementById("randomizeAllBtn");
+const randomizeExistingBtn = document.getElementById("randomizeExistingBtn");
+const randomizeProgressionBtn = document.getElementById("randomizeProgressionBtn");
+const clearFxBtn = document.getElementById("clearFxBtn");
 patBtn.addEventListener("click", ()=>{
   patternMode = !patternMode;
   patBtn.classList.toggle("active", patternMode);
   document.getElementById("xyPad").classList.toggle("pad-disabled", patternMode);
+  randomWrap.classList.toggle("hidden", !patternMode);
   if(patternMode){
     rebuildGridForPattern();
   } else {
     rebuildGridForBank();
   }
+});
+
+// shuffle helper: returns a fresh 16-length boolean array with exactly
+// `onCount` random positions set true
+function shuffledSteps(onCount){
+  const positions = [...Array(16).keys()];
+  for(let i=positions.length-1; i>0; i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [positions[i],positions[j]] = [positions[j],positions[i]];
+  }
+  const steps = new Array(16).fill(false);
+  for(let k=0; k<onCount; k++) steps[positions[k]] = true;
+  return steps;
+}
+
+// A smooth-ish random melodic contour across all 16 steps: mostly small
+// stepwise movement (like a real melody), occasional medium jumps, and
+// rare bigger leaps, kept within 0..1 and gently bounced back if it
+// would wander out of range. This is the SAME relative contour value
+// every melodic sound maps into its own pitch range, so sounds with
+// very different registers (a sub-bass vs. a bright lead) still trace
+// the same rise-and-fall shape when they land on the same steps.
+function generateMelodyContour(){
+  const contour = new Array(16);
+  let pos = 0.3 + Math.random()*0.4;
+  for(let i=0; i<16; i++){
+    contour[i] = Math.max(0, Math.min(1, pos));
+    const r = Math.random();
+    let step;
+    if(r < 0.55) step = (Math.random()<0.5?-1:1) * (0.06+Math.random()*0.08);
+    else if(r < 0.85) step = (Math.random()<0.5?-1:1) * (0.15+Math.random()*0.12);
+    else step = (Math.random()*2-1) * 0.4;
+    let next = pos + step;
+    if(next < 0 || next > 1) next = pos - step*1.6; // bounce back toward center
+    pos = Math.max(0, Math.min(1, next));
+  }
+  return contour;
+}
+
+function randomizeAll(){
+  // one shared melodic idea for this pass -- every melodic sound will
+  // trace this same contour (in its own pitch range) on whichever steps
+  // it lands on, so the randomized kit reads as a tune rather than
+  // unrelated random notes
+  const melody = generateMelodyContour();
+
+  // drums: varied per-lane density so it doesn't just come out as noise,
+  // plus a chance of per-step motion so playback has movement too
+  for(let s=0; s<16; s++){
+    const isMelodic = !!SOUNDS[s].melodic;
+    const density = 0.08 + Math.random()*0.30;
+    const activeSteps = [];
+    for(let step=0; step<16; step++){
+      patterns[s][step] = Math.random() < density;
+      if(patterns[s][step]) activeSteps.push(step);
+    }
+    for(let step=0; step<16; step++){
+      if(!patterns[s][step]){ params[s][step] = null; continue; }
+      if(isMelodic){
+        // follow the shared melody at this step, with a touch of
+        // per-hit wobble so it doesn't feel mechanically identical
+        // across sounds sharing a step
+        const wobble = Math.random()*0.1 - 0.05;
+        params[s][step] = (Math.random() < 0.6)
+          ? { x: clamp01(melody[step]+wobble), y: Math.random() }
+          : null; // some steps just fall back to the lane default below
+      } else {
+        params[s][step] = (Math.random() < 0.3) ? { x:Math.random(), y:Math.random() } : null;
+      }
+    }
+    if(isMelodic){
+      // the lane's base pitch also comes from the melody -- the average
+      // contour value across its own active steps, so a sound with no
+      // per-step override still sits in the right part of the tune
+      const avg = activeSteps.length
+        ? activeSteps.reduce((sum,st)=> sum+melody[st], 0) / activeSteps.length
+        : melody[Math.floor(Math.random()*16)];
+      soundDefault[s] = { x: clamp01(avg), y: Math.random() };
+    } else {
+      soundDefault[s] = { x: Math.random(), y: Math.random() };
+    }
+  }
+  // fx: kept sparser than drums so the mix doesn't drown in effects
+  for(let s=0; s<16; s++){
+    const density = 0.04 + Math.random()*0.14;
+    for(let step=0; step<16; step++){
+      fxPatterns[s][step] = Math.random() < density;
+      fxParams[s][step] = (fxPatterns[s][step] && Math.random() < 0.3)
+        ? { x:Math.random(), y:Math.random() } : null;
+    }
+    fxDefault[s] = { x:Math.random(), y:Math.random() };
+  }
+  // the live state no longer matches any saved slot or preset, and any
+  // pending queued swap would just overwrite the fresh randomization
+  liveSource = null;
+  queuedSource = null;
+  renderPatternGrid();
+}
+
+// Randomize Existing: only touches lanes that already have at least one
+// active step -- keeps the same "instrumentation" (which sounds are in
+// the pattern) and the same number of hits per lane, but reshuffles
+// WHERE those hits land and re-rolls their tone/decay. Lanes that are
+// currently empty stay empty; nothing new gets introduced.
+function randomizeExisting(){
+  for(let s=0; s<16; s++){
+    const onCount = patterns[s].filter(v=>v).length;
+    if(onCount === 0) continue;
+    const newSteps = shuffledSteps(onCount);
+    patterns[s] = newSteps;
+    for(let step=0; step<16; step++){
+      params[s][step] = (newSteps[step] && Math.random() < 0.3)
+        ? { x:Math.random(), y:Math.random() } : null;
+    }
+    soundDefault[s] = { x:Math.random(), y:Math.random() };
+  }
+  for(let s=0; s<16; s++){
+    const onCount = fxPatterns[s].filter(v=>v).length;
+    if(onCount === 0) continue;
+    const newSteps = shuffledSteps(onCount);
+    fxPatterns[s] = newSteps;
+    for(let step=0; step<16; step++){
+      fxParams[s][step] = (newSteps[step] && Math.random() < 0.3)
+        ? { x:Math.random(), y:Math.random() } : null;
+    }
+    fxDefault[s] = { x:Math.random(), y:Math.random() };
+  }
+  liveSource = null;
+  queuedSource = null;
+  renderPatternGrid();
+}
+
+randomizeAllBtn.addEventListener("click", ()=>{
+  randomizeAll();
+  pulseCell(randomizeAllBtn);
+});
+randomizeExistingBtn.addEventListener("click", ()=>{
+  randomizeExisting();
+  pulseCell(randomizeExistingBtn);
+});
+
+function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+
+// Nudge a melodic lane's pitch by a small number of scale-note steps
+// (mostly ±1, occasionally ±2, rarely a free jump) instead of picking
+// an unrelated random note -- this is what makes pitch movement read
+// as a "progression" rather than noise.
+function nudgeMelodicX(def, currentX){
+  const notes = scaleNotesInRange(def.melodic.base, def.melodic.range);
+  const n = notes.length;
+  const curIdx = Math.min(n-1, Math.floor(currentX*n));
+  const r = Math.random();
+  let delta;
+  if(r < 0.6) delta = (Math.random()<0.5 ? -1 : 1);
+  else if(r < 0.88) delta = (Math.random()<0.5 ? -2 : 2);
+  else delta = Math.floor(Math.random()*n) - curIdx; // rare free leap for variety
+  const newIdx = Math.max(0, Math.min(n-1, curIdx + delta));
+  return (newIdx + 0.5) / n;
+}
+
+// Evolve one bank's lanes in place: existing lanes get localized rhythmic
+// mutation (small per-step flip chance, biased to preserve the groove)
+// plus a melodic nudge or gentle timbre nudge; silent lanes have a small
+// chance of sprouting a sparse new idea; busy lanes have a small chance
+// of thinning back out -- so repeated presses feel like a piece evolving
+// rather than a new unrelated pattern each time.
+function evolveBank(defs, pat, prm, dflt, flipChance, seedChance){
+  for(let s=0; s<16; s++){
+    const onSteps = [];
+    for(let step=0; step<16; step++) if(pat[s][step]) onSteps.push(step);
+
+    if(onSteps.length === 0){
+      if(Math.random() < seedChance){
+        pat[s] = shuffledSteps(1 + Math.floor(Math.random()*3));
+      }
+    } else {
+      const mutated = pat[s].slice();
+      for(let step=0; step<16; step++){
+        if(Math.random() < flipChance) mutated[step] = !mutated[step];
+      }
+      // a small chance to let a busy lane thin out to silence on purpose,
+      // otherwise make sure it doesn't accidentally get wiped by mutation
+      if(mutated.every(v=>!v) && Math.random() > 0.15){
+        mutated[onSteps[Math.floor(Math.random()*onSteps.length)]] = true;
+      }
+      pat[s] = mutated;
+    }
+
+    const def = defs[s];
+    if(def.melodic){
+      dflt[s] = { x: nudgeMelodicX(def, dflt[s].x), y: clamp01(dflt[s].y + (Math.random()*0.3-0.15)) };
+    } else {
+      dflt[s] = { x: clamp01(dflt[s].x + (Math.random()*0.3-0.15)), y: clamp01(dflt[s].y + (Math.random()*0.3-0.15)) };
+    }
+
+    for(let step=0; step<16; step++){
+      if(!pat[s][step]){ prm[s][step] = null; continue; }
+      if(prm[s][step]){
+        prm[s][step] = {
+          x: clamp01(prm[s][step].x + (Math.random()*0.2-0.1)),
+          y: clamp01(prm[s][step].y + (Math.random()*0.2-0.1))
+        };
+      } else if(Math.random() < 0.15){
+        prm[s][step] = { x:Math.random(), y:Math.random() };
+      }
+    }
+  }
+}
+
+// Evolve Loop: takes the current pattern and pushes it forward -- small
+// stepwise melodic movement, localized rhythmic mutation, occasional
+// new/thinning lanes -- rather than a clean-slate or pure reshuffle, so
+// consecutive presses feel like a logical musical progression with just
+// enough randomness to avoid repeating itself.
+function randomizeProgression(){
+  evolveBank(SOUNDS, patterns, params, soundDefault, 0.12, 0.12);
+  evolveBank(FXDEFS, fxPatterns, fxParams, fxDefault, 0.05, 0.06);
+  liveSource = null;
+  queuedSource = null;
+  renderPatternGrid();
+}
+
+randomizeProgressionBtn.addEventListener("click", ()=>{
+  randomizeProgression();
+  pulseCell(randomizeProgressionBtn);
+});
+
+// Clear FX: wipes only the FX bank -- every effect's pattern, recorded
+// motion, and base knob position -- leaving all 16 drum patterns
+// completely untouched.
+function clearAllEffects(){
+  for(let s=0; s<16; s++){
+    fxPatterns[s].fill(false);
+    fxParams[s].fill(null);
+    fxDefault[s] = { x:0.5, y:0.5 };
+  }
+  resetFxChain();
+  liveSource = null;
+  queuedSource = null;
+  renderPatternGrid();
+}
+clearFxBtn.addEventListener("click", ()=>{
+  clearAllEffects();
+  pulseCell(clearFxBtn);
 });
 
 function setBpm(v){
